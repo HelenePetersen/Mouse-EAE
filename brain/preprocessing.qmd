@@ -4,4 +4,223 @@ format: html
 editor: visual
 ---
 
-##
+## Introduction
+
+WRITE ABOUT THE SET UP HERE.
+
+For clarity, an experiment refers to B0, B11 or B21. An experiments is characterized by all cells being loaded onto the same lane for sequencing. A sample refers to cells comming from the same replicate, that is the same mouse.
+
+## Preparation
+
+In the following section, the single cell data is loaded to create a Seurat object including both gene expression data and hashtag oligo data. Relevant metadata is added.
+
+### Set Up
+
+Relevant libraries are loaded.
+
+```{r, message = false}
+library(Seurat)
+library(tidyverse)
+library(stringr)
+library(ggplot2)
+library(patchwork)
+library(SingleCellExperiment)
+library(scDblFinder)
+library(scater)
+library(table1)
+library(grid)
+```
+
+Define the path to get the data and save results. The path might have to be changed.
+
+```{r}
+data_path <- "/Volumes/Department/Sund/Public/T-Cell-Signalling-and-Development/VB Lab/10x_data/10xRNA_M-EAE-gdT/data/raw_data"
+
+result_path <- "~/Dropbox/Special Project Single Cell/mouse/brain/results/preprocessing"
+```
+
+### Data Load
+
+We look at the available folders in the data folder.
+
+```{r}
+data_folders <- list.files(path = data_path)
+data_folders
+```
+
+We wish to preprocess the brain data, so we grep only these files and load them.
+
+```{r, message = FALSE}
+data_folders_brain <- data_folders[str_detect(string = data_folders,
+                                        pattern = "10xRNA_M-EAE-gdT-B")]
+
+data <- Read10X(data.dir = paste(data_path,
+                                 data_folders_brain,
+                                 "filtered_feature_bc_matrix",
+                                 sep = "/"))
+```
+
+The data object is a list of 2 elements: The gene counts (Gene expression) and the expression of hashtag oligonucleotide (Antibody Capture) for each cell. A Seurat object is created from the gene counts. As we only want to include cells present in both data sets, we first identify the cells in common between the two. Furthermore, we will only include genes detected in at least 3 cells.
+
+```{r, warning = FALSE}
+joined_cells <- intersect(colnames(data$`Gene Expression`),
+                          colnames(data$`Antibody Capture`))
+
+seu_obj <- CreateSeuratObject(counts = data$`Gene Expression`[ , joined_cells],
+                              min.cells = 3)
+
+seu_obj
+```
+
+The data consists of in total 6198 cells expressing together 13415 genes. The sample information is given by the cell identity classes and save in the metadata as well. However, the origin of the cell is given by 1 if comming from B0, 2 if from B11 and 3 when originating from B21. We wish to use the describe the experiment by the original labels.
+
+```{r}
+seu_obj@meta.data$orig.ident <- factor(seu_obj@meta.data$orig.ident,
+                                       levels = c("1", "2", "3"),
+                                       labels = str_extract(string = data_folders_brain,
+                                                            pattern = "B\\d+"))
+Idents(seu_obj) <- seu_obj@meta.data$orig.ident 
+
+label(seu_obj@meta.data$orig.ident) <- "Experiment"
+table1(data = seu_obj@meta.data,
+       ~ orig.ident)
+```
+
+We see a huge difference between the number of cells coming from each of the experiments. B21 has 10 times as many cells compared to B0.
+
+### Demultiplexing
+
+The following section follows the guide described in the hashing vignette:
+
+<https://satijalab.org/seurat/archive/v3.1/hashing_vignette.html>
+
+We wish to add the hashtag oligo (HTO) data to the Seurat object to identify which replicate each cell comes from within each experiment. As for the gene counts, we select only the data for relevant cells, that is, cells present in both the gene expression data and the HTO expression data.
+
+```{r}
+seu_obj[["HTO"]] <- CreateAssayObject(counts = data$`Antibody Capture`[ , joined_cells])
+```
+
+Before assigning the cells back to their sample origins, the HTO data is normalized using centered log ratio (CLR) transformation, where counts were divided by the geometric mean of an HTO across cells in a single experiment and log-transformed:
+
+$$
+x_i' = \log\frac{x_i}{(\prod_{i=1}^{n} x_i)^{\frac{1}{n}}}
+$$
+
+Here, $x_i$ is the count for a specified HTO in cell $i$, $n$ is the total number of cells.
+
+We use the Seurat function HTODemux() to assign cells to their origin. This function identifies an expression threshold for each HTO to classify cells as either singlets together with their sample-of-origin, doublets and negative cells (empty droplets). The procedure is as follows for a single experiment (lane):
+
+1)  The cells are clustered into $K+1$ clusters, where $K$ is the number of samples (which is 4 in this case).
+
+The following procedure is performed for each HTOs:
+
+2)  We identified the $K$-medoids cluster with the highest average HTO expression and excluded these cells. That is, we use the cluster with the lowest average value as the negative group to determine a background distribution for each HTO based on “negative” cells. Outliers from this distribution is thought to represent positive signals.
+
+3)  The highest 0.5 % HTO expressing cells are excluded from the negative group to get rid of potential outliers.
+
+4)  A negative binomial distribution is fitted to the remaining HTO values. The 0.99 quantile of the distribution is chosen as the HTO-specific threshold.
+
+Afterwards, we can compared the HTO expression for each of the cells. If their expression level for a given HTO exceeds the threshold, they are positive for this HTO. Cells that were positive for only one HTO are classified as singlets. Cells that were positive for two or more HTOs or negative for all HTOs were classified as doublets or negatives, respectively.
+
+The 0.99 quantile for the negative binomial distribution is the default value for the HTODemux function. Lowering the threshold will result in less cells being classified as negatives. However, more cells would be thought as doublets.
+
+```{r, message = FALSE}
+# Create list to collect Seurat objects for each lane.
+list_seu_obj <- list()
+
+# Experiment labels.
+exp_label <- names(table(seu_obj@meta.data$orig.ident))
+
+# Number of experiments/lanes.
+exp_numb <- length(exp_label)
+
+for (i in 1:exp_numb){
+  # Get the cells from a single 10x lane.
+  exp_seu_obj <- subset(seu_obj,
+                        orig.ident == exp_label[i])
+  
+  # Normalize the HTO expression levels.
+  exp_seu_obj <- NormalizeData(exp_seu_obj,
+                                assay = "HTO",
+                                normalization.method = "CLR")
+  
+  # Demultiplex cells to their the original sample-of-origin.
+  exp_seu_obj <- HTODemux(exp_seu_obj,
+                           assay = "HTO",
+                           positive.quantile = 0.99)
+  
+  # Save the results.
+  list_seu_obj[i] <- exp_seu_obj
+}
+
+# Merge the Seurat objects created for each experiment. 
+seu_obj <- merge(unlist(list_seu_obj)[[1]],
+                 y = unlist(list_seu_obj)[2:exp_numb])
+
+seu_obj
+```
+
+Seurat v5 assays store the count data in layers after merge. These layers are joined.
+
+```{r}
+seu_obj[["RNA"]] <- JoinLayers(seu_obj[["RNA"]])
+
+seu_obj
+```
+
+There are a lot of information from the demultiplexing added to the metadata. Information about the output from HTODemux can be found here:
+
+<https://www.rdocumentation.org/packages/Seurat/versions/5.0.1/topics/HTODemux>
+
+We will chose to focus on HTO_classification.global, HTO_maxID and hash.ID:
+
+-   HTO.maxID - Name of hashtag with the highest signal
+
+-   HTO_classification.global - Global classification result (singlet, doublet or negative)
+
+-   hash.ID - Classification result (replicate, doublet or negative)
+
+We look at the number of cells classified as singlets, doublets and negative/ambiguous cells across the three experiments. 
+
+```{r}
+label(seu_obj@meta.data$HTO_classification.global) <- "HTO Classification"
+table1(data = seu_obj@meta.data,
+       ~ HTO_classification.global | orig.ident,
+       caption = "Experiment")
+```
+
+We inspect the expression of the hashtags for the each of the classes given by hash.ID to see how the demultiplexing went. 
+
+```{r, message = FALSE}
+Idents(seu_obj) <- factor(seu_obj@meta.data$hash.ID,
+                          levels = c("M.Rep1", "M.Rep2", "M.Rep3", "Doublet", "Negative"),
+                          labels = c("Replicate 1", "Replicate 2", "Replicate 3", "Doublet", "Negative"))
+
+list_ridgeplot <- list()
+
+for (i in 1:exp_numb){
+  ridgeplot_sample <- RidgePlot(subset(seu_obj, orig.ident == exp_label[i]),
+                                assay = "HTO",
+                                features = rownames(seu_obj[["HTO"]]),
+                                ncol = 1) +
+    plot_annotation(title = exp_label[i])
+  
+  list_ridgeplot[[i]] <- ridgeplot_sample
+  
+  ggsave(filename = paste("ridgeplot_", exp_label[i], ".png", sep = ""),
+         path = result_path,
+         plot = ridgeplot_sample)
+}
+
+list_ridgeplot[[1]] | list_ridgeplot[[2]] | list_ridgeplot[[3]]
+
+ggsave(filename = "ridgeplot.png",
+         path = result_path)
+```
+
+
+
+
+
+
+
