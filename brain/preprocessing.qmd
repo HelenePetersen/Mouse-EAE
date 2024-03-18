@@ -192,35 +192,393 @@ table1(data = seu_obj@meta.data,
 We inspect the expression of the hashtags for the each of the classes given by hash.ID to see how the demultiplexing went. 
 
 ```{r, message = FALSE}
-Idents(seu_obj) <- factor(seu_obj@meta.data$hash.ID,
-                          levels = c("M.Rep1", "M.Rep2", "M.Rep3", "Doublet", "Negative"),
-                          labels = c("Replicate 1", "Replicate 2", "Replicate 3", "Doublet", "Negative"))
+# Replicate labels.
+rep_label <- rownames(seu_obj[["HTO"]])
 
+# Number of experiments/lanes.
+rep_numb <- length(rep_label)
+
+hashtag <- c("Replicate 1", "Replicate 2", "Replicate 3")
+
+Idents(seu_obj) <- factor(seu_obj@meta.data$hash.ID,
+                          levels = c(rep_label, "Doublet", "Negative"),
+                          labels = c(hashtag, "Doublet", "Negative"))
+
+# Create list to gather the plots.
 list_ridgeplot <- list()
 
 for (i in 1:exp_numb){
   ridgeplot_sample <- RidgePlot(subset(seu_obj, orig.ident == exp_label[i]),
                                 assay = "HTO",
-                                features = rownames(seu_obj[["HTO"]]),
-                                ncol = 1) +
-    plot_annotation(title = exp_label[i])
+                                features = rep_label,
+                                combine = FALSE) 
   
-  list_ridgeplot[[i]] <- ridgeplot_sample
+  # Modify the plots from RidgePlot function before combining them.
+  for (j in 1:length(ridgeplot_sample)){
+    ridgeplot_sample[[j]] <- ridgeplot_sample[[j]] +
+      labs(title = paste(exp_label[i],
+                         hashtag[j],
+                         "HTO"),
+           y = "") +
+      theme(plot.title = element_text(hjust = -0.2),
+            legend.position = "none")}
+
+  list_ridgeplot[[i]] <- wrap_plots(ridgeplot_sample, ncol = 1)
   
+  # Save the results for each experiment.
   ggsave(filename = paste("ridgeplot_", exp_label[i], ".png", sep = ""),
          path = result_path,
-         plot = ridgeplot_sample)
+         plot = list_ridgeplot[[i]],
+         width = 6,
+         height = 10)
 }
 
-list_ridgeplot[[1]] | list_ridgeplot[[2]] | list_ridgeplot[[3]]
+# Combine the results for all experiments.
+ridgeplot_all <- list_ridgeplot[[1]] | list_ridgeplot[[2]] | list_ridgeplot[[3]]
 
 ggsave(filename = "ridgeplot.png",
-         path = result_path)
+       path = result_path,
+       plot = ridgeplot_all,
+       width = 18,
+       height = 10)
+
+ridgeplot_all
+```
+
+It seems that the demultiplexing based on data from HTO expression went well. We visualize pairs of HTO signals to further explore the results. 
+
+
+```{r}
+qcPlotScatterHTO <- function(data, feature, feature_name){
+  FeatureScatter({{data}}, 
+                 feature1 = paste("hto_", feature[1], sep = ""),
+                 feature2 = paste("hto_", feature[2], sep = ""),
+                 plot.cor = FALSE) +
+    xlab(paste(feature_name[1], "HTO Exp.")) +
+    ylab(paste(feature_name[2], "HTO Exp.")) + 
+    labs(colour = "HTO Classification") 
+}
+
+
+# Create list to store unique pairs.
+unique_pairs <- list()
+
+# Generate unique pairs
+for (i in 1:rep_numb){
+  for (j in 1:rep_numb){
+    if (i != j){
+      pair <- list(sort(c(rep_label[i], rep_label[j])))
+      if (!(pair %in% unique_pairs)){
+        unique_pairs <- c(unique_pairs, pair)
+      }
+    }
+  }
+}
+
+# Create list to store plots. 
+list_scatterHTO <- list()
+
+for (i in 1:length(unique_pairs)){
+  rep_label_clean <- str_replace(rep_label, "M.Rep(\\d)", "Rep(\\d)")
+  list_scatterHTO[[i]] <- qcPlotScatterHTO(seu_obj,  
+                                           unique_pairs[[i]],
+                                           str_replace(unique_pairs[[i]], 
+                                                       "M.Rep(\\d)", 
+                                                       "Rep. \\1"))
+}
+
+# Combine the plots.
+scatterHTO_all <- (list_scatterHTO[[1]] + theme(legend.position = "none")) | (list_scatterHTO[[2]] + theme(legend.position = "none")) | list_scatterHTO[[3]]
+
+ggsave(filename = "scatterHTO.png",
+       path = result_path,
+       plot = scatterHTO_all,
+       width = 18,
+       height = 6)
+
+scatterHTO_all
+```
+
+The scatter plots show that negatives are mainly found for cells expressing HTO for replicate 2. Some cells are also classified as doublets though they have high expression of a single HTO. We take a look at the number of RNA molecules across the HTO classification groups.
+
+```{r}
+qcPlotVln <- function(seu_obj, group, group_name, feature, feature_name){
+  ggplot(data = seu_obj@meta.data,
+         mapping = aes(x = {{group}},
+                       y = {{feature}})) +
+    geom_violin(colour = "#6699CC",
+                fill = "#6699CC",
+                alpha = 0.2) +
+    geom_jitter(size = 1,
+                alpha = 0.4) + 
+    scale_y_log10() +
+    xlab(group_name) + 
+    ylab(feature_name) + 
+    theme_bw()
+}
+
+qcPlotVln(seu_obj, 
+          HTO_classification.global, "HTO Classification", 
+          nCount_RNA, "Number of molecules") + 
+  labs(title = "Number of RNA Molecules Across HTO Classification Groups")
+
+ggsave(filename = "vlnHTO_molecules.png",
+       path = result_path,
+       width = 10,
+       height = 6)
+```
+
+From the plots, there seems to be two distributions. This might be because of huge differences in the number of RNA molecules expressed for each experiment. However, the doublets seems to have a higher number of molecules compared to the single cells as expected. We take a look at the number of genes. 
+
+```{r}
+qcPlotVln(seu_obj, 
+          HTO_classification.global, "HTO Classification", 
+          nFeature_RNA, "Number of genes") + 
+  labs(title = "Number of Genes Across HTO Classification Groups")
+
+ggsave(filename = "vlnHTO_genes.png",
+       path = result_path,
+       width = 10,
+       height = 6)
+```
+
+Again, the distribution of the number of genes per cell tends to be a bit higher for the doublets than the singlets. The HTO demultiplexing results can also be visualized by the heatmap below.
+
+```{r}
+heatmap_prefiltering <- HTOHeatmap(seu_obj,
+                                   assay = "HTO",
+                                   ncells = dim(seu_obj)[1]) +
+  ggtitle("HTO Signals Across The Cells") +
+  theme(plot.title = element_text(hjust = 0.5))
+
+ggsave(filename = "heatmap_prefiltering.png",
+       path = result_path,
+       plot = heatmap_prefiltering)
+
+heatmap_prefiltering
+```
+
+### Metadata
+
+The percentage of mitochondrial and ribosomal content is added.
+
+```{r}
+# Mitochondrial content
+seu_obj <- PercentageFeatureSet(seu_obj,
+                                pattern = "^mt-",
+                                col.name = "percent_mt")
+
+# Ribosomal content
+seu_obj <- PercentageFeatureSet(seu_obj,
+                                pattern = "R[sp]l",
+                                col.name = "percent_ribo")
+```
+
+The metadata is cleaned up to remove unrelevant columns. First, let us take a look at what is available at this point. 
+
+```{r}
+colnames(seu_obj@meta.data)
+```
+We wish to remove nCount_HTO, nFeature_HTO, HTO_secondID, HTO_margin, HTO_classification.
+
+```{r}
+seu_obj$nCount_HTO         <- NULL
+seu_obj$nFeature_HTO       <- NULL
+seu_obj$HTO_secondID       <- NULL
+seu_obj$HTO_margin         <- NULL
+seu_obj$HTO_classification <- NULL
+seu_obj$hash.ID            <- NULL
+```
+
+We change the HTO_maxID, such that the replicate is decribed only by the digit.
+
+```{r}
+seu_obj$HTO_maxID <- factor(str_replace(seu_obj$HTO_maxID,
+                                        pattern = "M.Rep(\\d)",
+                                        replacement = "\\1"))
+```
+
+The names are modified to ensure consistency. 
+
+```{r}
+colnames(seu_obj@meta.data) <- c("experiment", "nCount_molecules", "nCount_genes", "replicate", "hto_class", "percent_mt", "percent_ribo")
+
+label(seu_obj@meta.data$hto_class) <- NULL
+
+sample(seu_obj@meta.data)
+```
+
+## Filtering
+
+The goal of filtering is to only include true cells that are of high quality based on the quality metrics generated in the previous section.
+
+### Quality Control
+
+The following code are customized plot function for quality control.
+
+```{r}
+qcPlotDens <- function(seu_obj, group, group_name, feature, feature_name){
+  ggplot(data = seu_obj@meta.data,
+         mapping = aes(x = {{feature}},
+                       fill = {{group}})) +
+    geom_density(alpha = 0.2) +
+    scale_x_log10() +
+    xlab(feature_name) + 
+    ylab("Density") + 
+    theme_bw() +
+    labs(fill = group_name)
+}
+```
+
+We inspect the distribution for different variables in the metadata to decide the filtering thresholds. First, let's take a look at the distribution of molecules across experiments. 
+
+```{r}
+thres_molecules <- data.frame(group = factor(exp_label),
+                              threshold_down = c(10000, 10000, 1000),
+                              threshold_up = c(1000, 1000, 100))
+
+qcPlotVln(seu_obj,
+          experiment,
+          "Experiment",
+          nCount_molecules,
+          "Number of molecules",
+          NULL) +
+  geom_boxplot(data = thres_molecules,
+               mapping = aes(x = group,
+                             y = threshold_up),
+               color = "#CC3333") +
+  geom_boxplot(data = thres_molecules,
+               mapping = aes(x = group,
+                             y = threshold_down),
+               color = "#CC3333") +
+  theme(legend.position = "None") +
+  labs(title = "Distribution of The Number of Molecules Across Experiments",
+       caption = "Red lines indicates filtering threshold.")
+
+ggsave(filename = "vlnEXP_molecules.png",
+       path = result_path,
+       width = 6,
+       height = 4)
+```
+
+```{r}
+qcPlotDens(seu_obj,
+           experiment,
+           "Experiment",
+           nCount_molecules,
+           "Number of molecules") +
+  labs(title = "Distribution of The Number of Molecules Across Experiments")
+
+ggsave(filename = "densEXP_molecules.png",
+       path = result_path,
+       width = 7,
+       height = 4)
+```
+
+There is a huge difference between the experiments when it comes to the distribution of the total number of molecules pr. cell. Let us see if the distribution for the number of genes also differs.
+
+```{r}
+thres_genes <- data.frame(group = factor(exp_label),
+                          threshold_down = c(0, 0, 0),
+                          threshold_up = c(0, 0, 0))
+
+qcPlotVln(seu_obj,
+          experiment,
+          "Experiment",
+          nCount_genes,
+          "Number of genes",
+          NULL) +
+  #geom_boxplot(data = thres_genes,
+               #mapping = aes(x = group,
+                             #y = threshold_up),
+               #color = "#CC3333") +
+  #geom_boxplot(data = thres_genes,
+               #mapping = aes(x = group,
+                             #y = threshold_down),
+               #color = "#CC3333") +
+  theme(legend.position = "None") +
+  labs(title = "Distribution of The Number of Genes Across Experiments",
+       caption = "Red lines indicates filtering threshold.")
+
+ggsave(filename = "vlnEXP_genes.png",
+       path = result_path,
+       width = 6,
+       height = 4)
+```
+```{r}
+qcPlotDens(seu_obj,
+           experiment,
+           "Experiment",
+           nCount_genes,
+           "Number of genes") +
+  labs(title = "Distribution of The Number of Genes Across Experiments")
+
+ggsave(filename = "densEXP_genes.png",
+       path = result_path,
+       width = 7,
+       height = 4)
+```
+
+```{r}
+thres_genes <- data.frame(group = factor(exp_label),
+                          threshold_down = c(0, 0, 0),
+                          threshold_up = c(0, 0, 0))
+
+qcPlotVln(seu_obj,
+          experiment,
+          "Experiment",
+          percent_mt,
+          "Mitochondrial content (%)",
+          NULL) +
+  #geom_boxplot(data = thres_genes,
+               #mapping = aes(x = group,
+                             #y = threshold_up),
+               #color = "#CC3333") +
+  #geom_boxplot(data = thres_genes,
+               #mapping = aes(x = group,
+                             #y = threshold_down),
+               #color = "#CC3333") +
+  scale_y_continuous() +
+  theme(legend.position = "None") +
+  labs(title = "Distribution of The Mitochondrial Content Across Experiments",
+       caption = "Red lines indicates filtering threshold.")
+
+ggsave(filename = "vlnEXP_mito.png",
+       path = result_path,
+       width = 6,
+       height = 4)
 ```
 
 
+```{r}
+thres_genes <- data.frame(group = factor(exp_label),
+                          threshold_down = c(0, 0, 0),
+                          threshold_up = c(0, 0, 0))
 
+qcPlotVln(seu_obj,
+          experiment,
+          "Experiment",
+          percent_ribo,
+          "Ribosomal content (%)",
+          NULL) +
+  #geom_boxplot(data = thres_genes,
+               #mapping = aes(x = group,
+                             #y = threshold_up),
+               #color = "#CC3333") +
+  #geom_boxplot(data = thres_genes,
+               #mapping = aes(x = group,
+                             #y = threshold_down),
+               #color = "#CC3333") +
+  scale_y_continuous() +
+  theme(legend.position = "None") +
+  labs(title = "Distribution of The Ribosomal Content Across Experiments",
+       caption = "Red lines indicates filtering threshold.")
 
+ggsave(filename = "vlnEXP_ribo.png",
+       path = result_path,
+       width = 6,
+       height = 4)
+```
 
 
 
