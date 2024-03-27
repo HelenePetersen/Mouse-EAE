@@ -1,0 +1,900 @@
+---
+title: "Preprocessing 10xRNA_M-EAE-gdT"
+format: html
+editor: visual
+---
+
+## Preparation
+
+In the following section, the single cell data is loaded to create a Seurat object including both gene expression data and hashtag oligo data. Relevant metadata is added.
+
+### Set Up
+
+Relevant libraries are loaded.
+
+```{r, message = false}
+library(Seurat)
+library(tidyverse)
+library(stringr)
+library(patchwork)
+library(ggplot2)
+library(SingleCellExperiment)
+library(scDblFinder)
+library(DESeq2)
+library(scater)
+library(table1)
+library(readxl)
+```
+
+Define the path to get the data and save results. The path might have to be changed.
+
+```{r}
+# Johanne
+#data_path <- "/Volumes/10xRNA_M-EAE-gdT/data"
+
+#results_path <- "/Volumes/10xRNA_M-EAE-gdT/results/preprocessing"
+
+# Helene
+data_path <- "o:/Public/T-Cell-Signalling-and-Development/VB Lab/10x_data/SpecialProject/10xRNA_M-EAE-gdT/Lymph/data"
+results_path <- "o:/Public/T-Cell-Signalling-and-Development/VB Lab/10x_data/SpecialProject/10xRNA_M-EAE-gdT/Lymph/results/preprocessing"
+```
+
+### Defining project variables
+
+```{r}
+project <- "10xRNA_M-EAE-gdT"
+experiment_id <- list("LN0", "LN11", "LN21")
+experiment_num <- length(experiment_id)
+```
+
+### Data Load
+
+The data from all lymph experiments are loaded at once.
+
+```{r}
+
+sample <- paste(project,
+                experiment_id,
+                sep = "-")
+
+data_10X <- Read10X(data.dir = paste(data_path,
+                                               "raw_data",
+                                               sample,
+                                               "filtered_feature_bc_matrix",
+                                               sep="/"))
+```
+
+The object data_10X is a list of 2 elements: The gene counts (Gene expression) and the expression of hashtag oligonucleotide (Antibody Capture) for each cell. A Seurat object is created from the gene counts. As we only want to include cells present in both data sets, we first identify the cells in common between the two. Furthermore, we will only include genes detected in at least 3 cells.
+
+```{r, warning = FALSE}
+joined_cells <- intersect(colnames(data_10X$`Gene Expression`),
+                          colnames(data_10X$`Antibody Capture`))
+
+seu_obj <- CreateSeuratObject(counts = data_10X$`Gene Expression`[ , joined_cells], 
+                                       min.cells = 3)
+seu_obj <- RenameIdents(object = seu_obj,
+                                "1" = experiment_id[[1]],
+                                "2" = experiment_id[[2]],
+                                "3" = experiment_id[[3]])
+seu_obj@meta.data$timepoint <- Idents(seu_obj)
+
+seu_obj
+```
+
+The data consists of in total 29458 cells expressing together 18982 genes. The sample information is given by the cell identity classes and save in the metadata as well.
+
+```{r}
+table(seu_obj@meta.data$timepoint)
+```
+
+As seen from above, the total number of cells being sequenced for each experiment is very different.
+
+### Demultiplexing
+
+The following section follows the guide described in the hashing vignette:
+
+<https://satijalab.org/seurat/archive/v3.1/hashing_vignette.html>
+
+We wish to add the hashtag oligo (HTO) data to the Seurat object to identify the replicate ID for each cell. As for the gene counts, we select only the data for relevant cells, that is, cells present in the gene expression data.
+
+```{r}
+seu_obj[["HTO"]] <- CreateAssayObject(counts = data_10X$`Antibody Capture`[ , joined_cells])
+```
+
+Before assigning the cells back to their sample origins, the HTO data is normalized using centered log ratio (CLR) transformation, where counts were divided by the geometric mean of an HTO across cells in a single experiment and log-transformed:
+
+$$
+x_i' = \log\frac{x_i}{(\prod_{i=1}^{n} x_i)^{\frac{1}{n}}}
+$$
+
+Here, $x_i$ is the count for a specified HTO in cell $i$, $n$ is the total number of cells.
+
+We use the Seurat function HTODemux() to assign single cells to their origin. This function identifies an expression threshold for each HTO to classify cells as either singlets together with their sample-of-origin, doublets and negative cells (empty droplets). The procedure is as follows for a single experiment (lane):
+
+1)  The cells are clustered into $K+1$ clusters, where $K$ is the number of samples (which is 4 in this case).
+
+The following procedure is performed for each HTOs:
+
+2)  We identified the $K$-medoids cluster with the highest average HTO expression and excluded these cells. That is, we use the cluster with the lowest average value as the negative group to determine a background distribution for each HTO based on “negative” cells. Outliers from this distribution is thought to represent positive signals.
+
+3)  The highest 0.5% HTO expressing cells are excluded from the negative group to get rid of potential outliers.
+
+4)  A negative binomial distribution is fitted to the remaining HTO values. The 0.99 quantile of the distribution is chosen as the HTO-specific threshold.
+
+Afterwards, we can compared the HTO expression for each of the cells. If their expression level for a given HTO exceeds the threshold, they are positive for this HTO. Cells that were positive for only one HTO are classified as singlets. Cells that were positive for two or more HTOs or negative for all HTOs were classified as doublets or negatives, respectively.
+
+The 0.99 quantile for the negative binomial distribution is the default value for the HTODemux function. Lowering the threshold will result in less cells being classified as negatives. However, more cells would be thought as doublets.
+
+```{r, message = FALSE}
+# Create list to collect Seurat objects for each experiment type.
+list_seu_obj <- list()
+
+for (i in 1:experiment_num){
+  # Get the cells from a single 10x lane.
+  lane_seu_obj <- subset(seu_obj,
+                         orig.ident == i)
+  
+  # Normalize the HTO expression levels.
+  lane_seu_obj <- NormalizeData(lane_seu_obj,
+                                assay = "HTO",
+                                normalization.method = "CLR")
+  
+  # Demultiplex cells to their the original sample-of-origin.
+  lane_seu_obj <- HTODemux(lane_seu_obj,
+                           assay = "HTO",
+                           positive.quantile = 0.99)
+  
+  # Save the results.
+  list_seu_obj[i] <- lane_seu_obj
+}
+
+# Merge the Seurat objects created for each experiment. 
+seu_obj <- merge(unlist(list_seu_obj)[[1]],
+                          y = unlist(list_seu_obj)[2:experiment_num])
+
+seu_obj
+```
+
+Seurat v5 assays store the count data in layers after merge. These layers are joined.
+
+```{r}
+seu_obj[["RNA"]] <- JoinLayers(seu_obj[["RNA"]])
+
+seu_obj
+```
+
+We look at the number of cells classified as singlets, doublets and negative/ambiguous cells.
+
+```{r}
+table(seu_obj$HTO_classification.global)
+```
+
+We will return to these classifications after the filtering. We take a look at the available metadata after HTODemux.
+
+```{r}
+seu_obj@meta.data[1:10, ]
+```
+
+There are a lot of information from the demultiplexing. Information about the output from HTODemux can be found here:
+
+<https://www.rdocumentation.org/packages/Seurat/versions/5.0.1/topics/HTODemux>
+
+We will chose to focus on HTO_classification.global and HTO_maxID. The last mentioned column will be used to get the replicate number
+
+```{r}
+seu_obj[["replicate"]] <- str_split(seu_obj@meta.data$HTO_maxID,
+                                           pattern = "\\.[a-zA-z]{3}",
+                                           simplify = TRUE)[, 2]
+
+```
+
+We group cells based on the max HTO signal. When inspecting the ridgeline plot we some negatives for both LN0, LN11 and LN21 expressing HTOs for replicate 2 and 3.
+
+```{r, message = FALSE}
+Idents(seu_obj) <- "hash.ID"
+
+list_ridgeplot <- list()
+
+for (i in 1:experiment_num){
+  ridgeplot_sample <- RidgePlot(subset(seu_obj, timepoint == experiment_id[[i]]),
+                                assay = "HTO",
+                                features = rownames(seu_obj[["HTO"]]),
+                                sort = "TRUE",
+                                ncol = 2)
+  
+  list_ridgeplot[[i]] <- ridgeplot_sample
+  
+  ggsave(filename = paste("ridgeplot_", experiment_id[[i]], ".png", sep = ""),
+         path = results_path,
+         plot = ridgeplot_sample)
+}
+list_ridgeplot[[3]]
+```
+
+The table below shows where the negatives and doublets are comming from.
+
+```{r}
+label(seu_obj@meta.data$timepoint) <- "Timepoint"  
+label(seu_obj@meta.data$HTO_maxID) <- "Maximum HTO Expression"  
+
+table1(data = seu_obj@meta.data,
+       ~ timepoint + HTO_maxID | HTO_classification.global)
+```
+
+The negatives are mainly comming from M.rep, but only corresponding to 1% of the data.
+
+**We visualize pairs of HTO signals - this is not corrected for mouse.**
+
+```{r}
+qcPlotScatterHTO <- function(data, feature1, feature2){
+  feature_name1 <- str_split(feature1, pattern = "\\.")
+  feature_name2 <- str_split(feature2, pattern = "\\.")
+  FeatureScatter({{data}}, 
+                 feature1 = paste("hto_", feature1, sep = ""),
+                 feature2 = paste("hto_", feature2, sep = ""),
+                 plot.cor = FALSE) +
+    xlab(paste(feature_name1[[1]][2], " + ", feature_name1[[1]][3])) +
+    ylab(paste(feature_name2[[1]][2], " + ", feature_name2[[1]][3])) + 
+    labs(colour = "HTO Classification") 
+}
+
+scatterplot_CR_baselineVSeval <- qcPlotScatterHTO(melanoma_seu_obj,
+                                                  "Hu.CR.Baseline",
+                                                  "Hu.CR.Eval")
+
+scatterplot_PD_baselineVSeval <- qcPlotScatterHTO(melanoma_seu_obj,
+                                                  "Hu.PD.Baseline",
+                                                  "Hu.PD.Eval")
+
+scatterplot_baseline_crVSpd <- qcPlotScatterHTO(melanoma_seu_obj,
+                                                "Hu.CR.Baseline",
+                                                "Hu.PD.Baseline")
+
+scatterplot_eval_crVSpd <- qcPlotScatterHTO(melanoma_seu_obj, 
+                                            "Hu.CR.Eval", 
+                                            "Hu.PD.Eval")
+
+ggsave(filename = "scatterplot_CR_baselineVSeval.png",
+         path = results_path,
+         plot = scatterplot_CR_baselineVSeval)
+
+ggsave(filename = "scatterplot_PD_baselineVSeval.png",
+         path = results_path,
+         plot = scatterplot_PD_baselineVSeval)
+
+ggsave(filename = "scatterplot_baseline_crVSpd.png",
+         path = results_path,
+         plot = scatterplot_baseline_crVSpd)
+
+ggsave(filename = "scatterplot_eval_crVSpd.png",
+         path = results_path,
+         plot = scatterplot_eval_crVSpd)
+
+scatterplot_CR_baselineVSeval
+```
+
+There are some cells clustering together with doublets for CR + Baseline vs. CR + Eval though they are classified as CR + Baseline. This suggest that additional tools are nescesary for identifying doublets. For PD + Baseline vs. PD + Eval cells are identified as doublets, but they seem to be expressing mainly HTOs from one of the two groups.
+
+```{r}
+scatterplot_PD_baselineVSeval
+```
+
+We compare the number of UMIs for singlets, doublets and negative cells.
+
+```{r}
+Idents(melanoma_seu_obj) <- "HTO_classification.global"
+VlnPlot(melanoma_seu_obj, 
+        features = "nCount_RNA", 
+        pt.size = 0.1,
+        log = TRUE) +
+  xlab("") + 
+  labs(title = "Number of RNA molecules")
+```
+
+As expected, the doublets seem to have more molecules being sequenced.
+
+```{r}
+VlnPlot(melanoma_seu_obj, 
+        features = "nFeature_RNA", 
+        pt.size = 0.1,
+        log = TRUE) +
+  xlab("") + 
+  labs(title = "Number of genes")
+```
+
+Again, the distribution of the number of genes per cell tends to be a bit higher for the doublets than the singlets. The HTO demultiplexing results can also be visualized by the heatmap below.
+
+```{r}
+heatmap_pre_filtering <- HTOHeatmap(melanoma_seu_obj,
+                                    assay = "HTO",
+                                    ncells = 10000) +
+  ggtitle("HTO identity") +
+  theme(plot.title = element_text(hjust = 0.5))
+
+ggsave(filename = "heatmap_pre_filtering.png",
+         path = results_path,
+         plot = heatmap_pre_filtering)
+
+heatmap_pre_filtering
+```
+
+**The above is not corrected for mouse**
+
+### Metadata
+
+The percentage of mitochondrial, ribosomal and hemoglobin content is added.
+
+```{r}
+# Mitochondrial content
+seu_obj <- PercentageFeatureSet(seu_obj,
+                                pattern = "^mt-",
+                                col.name = "percent_mt")
+
+# Ribosomal content
+seu_obj <- PercentageFeatureSet(seu_obj,
+                                pattern = "^R[sp]l",
+                                col.name = "percent_ribo")
+
+
+```
+
+We add the patient ID from the HTODemux results.
+
+We create an id column to add to the meta data where we match the replicate and timepoint.
+
+```{r}
+seu_obj$id <- paste0(seu_obj$timepoint, sep = "_", seu_obj$replicate)
+```
+
+We save the Seurat object before proceeding with the filtering.
+
+```{r}
+saveRDS(seu_obj, file = paste(data_path, 
+                              "seurat_data/seu_obj.rds",
+                              sep = "/"))
+```
+
+## Filtering
+
+The goal of filtering is to only include true cells that are of high quality based on the quality metrics generated in the prevoius section. First, the Seurat object is loaded to the enviroment.
+
+```{r}
+seu_obj <- readRDS(paste(data_path,
+                        "seurat_data/seu_obj.rds", 
+                        sep="/"))
+```
+
+### Quality Control
+
+The following code are customized plot functions for quality control.
+
+```{r}
+qcPlotVln <- function(seu_obj, feature, feature_name, threshold1, threshold2, xlab){
+  ggplot(data = seu_obj@meta.data,
+         mapping = aes(x = orig.ident,
+                     y = {{feature}})) +
+  geom_violin(colour = "#6699CC",
+              fill = "#6699CC",
+              alpha = 0.2) +
+  geom_jitter(size = 0.1,
+              alpha = 0.2) + 
+  scale_x_discrete(labels = as.character(xlab)) + 
+  xlab("Sample") + 
+  ylab(feature_name) + 
+  labs(title = paste("Distribution of", tolower(feature_name), "across samples",
+                     sep = " ")) +
+  #facet_wrap(~reponse) + 
+  theme_bw() + 
+  geom_hline(yintercept = c(threshold1, threshold2),
+             colour = "#CC3333")
+}
+
+qcPlotDens <- function(seu_obj, feature, feature_name, threshold1, threshold2, xlab){
+  ggplot(data = seu_obj@meta.data,
+         mapping = aes(x = {{feature}},
+                       fill = orig.ident)) +
+  geom_density(alpha = 0.2) +
+  scale_x_log10() +
+  xlab(feature_name) + 
+  ylab("Density") + 
+  labs(title = paste("Distribution of", tolower(feature_name), "across samples",
+                     sep = " "),
+       fill = "Sample") +
+  scale_fill_discrete(labels = as.character(xlab)) + 
+  #facet_wrap(~reponse) + 
+  theme_bw() + 
+  geom_vline(xintercept = c(threshold1, threshold2),
+             colour = "#CC3333")
+}
+
+```
+
+We inspect the distribution for different variables in the metadata to decide the filtering thresholds.
+
+```{r}
+# Generate violin plots
+vlnplot_gene <- qcPlotVln(seu_obj,
+                          nFeature_RNA,
+                          "Number of genes",
+                          300, NULL,
+                          experiment_id)
+vlnplot_mole <- qcPlotVln(seu_obj,
+                          nCount_RNA,
+                          "Number of molecules",
+                          500, NULL,
+                          experiment_id)
+
+vlnplot_ribo <- qcPlotVln(seu_obj, 
+                          percent_ribo, 
+                          "Ribosomal content (%)", 
+                          NULL, NULL,
+                          experiment_id)
+vlnplot_mito <- qcPlotVln(seu_obj, 
+                          percent_mt, 
+                          "Mitocondrial content (%)", 
+                          NULL, 5,
+                          experiment_id)
+# Generate density plots
+densplot_gene <- qcPlotDens(seu_obj, 
+                            nFeature_RNA, 
+                            "Number of genes", 
+                            400, NULL,
+                          experiment_id)
+densplot_mole <- qcPlotDens(seu_obj, 
+                            nCount_RNA, 
+                            "Number of molecules", 
+                            500, NULL,
+                          experiment_id)
+
+# Save plots
+vlnplot <- list(vlnplot_gene, vlnplot_mole, vlnplot_mito, vlnplot_ribo)
+densplot <- list(densplot_gene, densplot_mole, densplot_mito, densplot_ribo)
+metric <- c("gene", "mole", "mito", "ribo")
+vlnplot_name <- paste("vlnplot_", metric, ".png", sep = "")
+densplot_name <- paste("densplot_", metric, ".png", sep = "")
+
+for (i in 1:4){
+  ggsave(filename = vlnplot_name[i],
+         path = results_path,
+         plot = vlnplot[[i]])
+  ggsave(filename = densplot_name[i],
+         path = results_path,
+         plot = densplot[[i]])
+}
+```
+
+```{r}
+densplot_gene
+```
+
+Since the distribution between the experiments are very different, will we make the filtering separately for the number of genes.
+
+```{r}
+vlnplot_mito
+```
+
+A high mitochondrial content would indicate dying cells, so we will only keep cells with less that 5% mitochondrial content. Since LN11 has very high mitochondrial content will we first filter on this parameter and see how the distribution changes
+
+```{r}
+seu_obj_filtered <- subset(seu_obj,
+                           subset = percent_mt < 5)
+```
+
+```{r}
+seu_obj_LN0 <- subset(seu_obj_filtered,
+       subset = timepoint == 'LN0')
+
+seu_obj_LN11 <- subset(seu_obj_filtered,
+       subset = timepoint == 'LN11')
+
+seu_obj_LN21 <- subset(seu_obj_filtered,
+       subset = timepoint == 'LN21')
+
+densplot_gene_LN0 <- qcPlotDens(seu_obj_LN0, 
+           nFeature_RNA, 
+           "Number of genes", 
+            400, 2500,
+            'LN0')
+
+densplot_gene_LN11 <- qcPlotDens(seu_obj_LN11, 
+           nFeature_RNA, 
+           "Number of genes", 
+            400, 5000,
+            'LN11')
+
+densplot_gene_LN21 <- qcPlotDens(seu_obj_LN21, 
+           nFeature_RNA, 
+           "Number of genes", 
+            400, 3000,
+            'LN21')
+
+densplot_mole_LN0 <- qcPlotDens(seu_obj_LN0,
+           nCount_RNA, 
+           "Number of molecules", 
+           500, NULL,
+           'LN0')
+
+densplot_mole_LN11 <- qcPlotDens(seu_obj_LN11,
+           nCount_RNA, 
+           "Number of molecules", 
+           500, NULL,
+           'LN11')
+
+densplot_mole_LN21 <- qcPlotDens(seu_obj_LN21,
+           nCount_RNA, 
+           "Number of molecules", 
+           500, NULL,
+           'LN21')
+
+vlnplot_gene_LN0 <- qcPlotVln(seu_obj_LN0,
+                          nFeature_RNA, 
+                          "Number of genes",
+                          400, 2500,
+                          'LN0')
+ggsave(filename = "vlnplot_gene_LN0.png",
+         path = results_path,
+         plot = vlnplot_gene_LN0)
+
+vlnplot_gene_LN11 <- qcPlotVln(seu_obj_LN11, 
+                            nFeature_RNA, 
+                            "Number of genes", 
+                            400, 5000,
+                          'LN11')
+
+ggsave(filename = "vlnplot_gene_LN11.png",
+         path = results_path,
+         plot = vlnplot_gene_LN11)
+
+
+densplot_gene_experiment <- list(densplot_gene_LN0, densplot_gene_LN11, densplot_gene_LN21)
+densplot_mole_experiment <- list(densplot_mole_LN0, densplot_mole_LN11, densplot_mole_LN21)
+
+
+densplot_gene_name <- paste("densplot_gene_", experiment_id, ".png", sep = "")
+densplot_mole_name <- paste("densplot_mole_", experiment_id, ".png", sep = "")
+
+for (i in 1:experiment_num){
+  ggsave(filename = densplot_gene_name[i],
+         path = results_path,
+         plot = densplot_gene_experiment[[i]])
+  ggsave(filename = densplot_mole_name[i],
+         path = results_path,
+         plot = densplot_mole_experiment[[i]])
+}
+
+```
+
+We take a look at the number of RNA molecules pr. cell vs. the number of genes.
+
+```{r}
+qcPlotScatter <- function(data, feature1, feature2, feature_name, threshold){
+  ggplot(data = {{data}}@meta.data,
+         mapping = aes(x = {{feature1}},
+                       y = {{feature2}},
+                       colour = orig.ident)) +
+  geom_point(alpha = 0.5) +
+  #facet_wrap(~orig.ident) +
+  xlab(feature_name[1]) + 
+  ylab(feature_name[2]) + 
+  #xlim(0,40000) +
+  labs(title = paste(feature_name[1], "vs.", tolower(feature_name[2]),
+                     sep = " "),
+       colour = "Sample") +
+  scale_colour_discrete(labels = experiment_id) + 
+  theme_bw() +
+  geom_vline(xintercept = c(threshold[1], threshold[2]),
+             colour = "#CC3333") +
+  geom_hline(yintercept = c(threshold[3], threshold[4]),
+             colour = "#CC3333")
+}
+
+scatterplot_LN0 <- qcPlotScatter(seu_obj_LN0, 
+                             nCount_RNA, 
+                             nFeature_RNA, 
+                             c("Number of molecules", "Number of genes"), 
+                             c(500, NULL, 500, 3000))
+
+scatterplot_LN11 <- qcPlotScatter(seu_obj_LN11, 
+                             nCount_RNA, 
+                             nFeature_RNA, 
+                             c("Number of molecules", "Number of genes"), 
+                             c(500, NULL, 500, 5000))
+#ggsave(filename = "scatterplot_LN11_zoomed.png",
+ #        path = results_path,
+  #       plot = scatterplot_LN11)
+
+scatterplot_LN21 <- qcPlotScatter(seu_obj_LN21, 
+                             nCount_RNA, 
+                             nFeature_RNA, 
+                             c("Number of molecules", "Number of genes"), 
+                             c(500, NULL, 500, 3000))
+
+densplot_gene_experiment <- list(scatterplot_LN0, scatterplot_LN11, scatterplot_LN21)
+scatterplot_name <- paste("scatterplot_", experiment_id, ".png", sep = "")
+
+for (i in 1:experiment_num){
+  ggsave(filename = scatterplot_name[i],
+         path = results_path,
+         plot = densplot_gene_experiment[[i]])
+}
+
+```
+
+The number of molecules vs. genes seems to be nicely correlated for LN0 and LN21, but LN11 has high number of transcripts per cell, where the number of genes does not increase in the same manner. Data points in the bottom right corner would indicate low quality cells, where the same genes are being sequenced over and over again. Cells in the top left corner could be doublets resulting in a large number of detected genes. As we do not see any cells in these areas, the data quality overall seem fine. We filter the cells based on our QC metrics. We also remove all ribosomal genes.
+
+```{r}
+seu_obj_filtered <- seu_obj_filtered[!grepl('^R[sp]l', rownames(seu_obj_filtered)), ]
+
+seu_obj_ex_filtered <- subset(seu_obj_filtered,
+                                    subset = (timepoint == "LN0" & nFeature_RNA > 400 & nFeature_RNA < 2500 
+                                    & nCount_RNA > 500) | (timepoint == "LN11" & nFeature_RNA > 400 & nFeature_RNA < 5000 
+                                    & nCount_RNA > 500) | (timepoint == "LN21" & nFeature_RNA > 400 & nFeature_RNA < 3000 
+                                    & nCount_RNA > 500))
+
+seu_obj_ex_filtered[["HTO"]] <- CreateAssayObject(counts = seu_obj@assays$HTO$data[, colnames(seu_obj_ex_filtered)])
+
+seu_obj_ex_filtered
+```
+
+Let us see how much the filtering step removed:
+
+```{r}
+print(paste("Genes removed: ", 
+            dim(seu_obj)[1] - dim(seu_obj_ex_filtered)[1], 
+            " (",
+            round((dim(seu_obj)[1] - dim(seu_obj_ex_filtered)[1])/dim(seu_obj)[1] * 100, 
+                  digits = 2),
+            "%)",
+      sep = ""))
+
+print(paste("Cells removed: ", 
+            dim(seu_obj)[2] - dim(seu_obj_ex_filtered)[2], 
+            " (",
+            round((dim(seu_obj)[2] - dim(seu_obj_ex_filtered)[2])/dim(seu_obj)[2] * 100, 
+                  digits = 2),
+            "%)",
+      sep = ""))
+```
+
+## Doublet Identification
+
+We wish to identify doublets using the scDblFinder package, which gathers various methods for the detection and handling of doublets. We will use the computeDoubletDensity approach, where we obtain a doublet score for each cell based on the density of simulated doublets around it.
+
+### Normalization
+
+Before doublet detection, we must normalize and find variable features according to the standard Seurat workflow. The counts are normalized by dividing the count for each gene pr. cell by the total counts for that cell and multiplied by a scale factor. This is then log transformed using the natural log.
+
+```{r}
+seu_obj_ex_filtered <- NormalizeData(seu_obj_ex_filtered,
+                                           normalization.method = "LogNormalize",
+                                           scale.factor = 10000)
+```
+
+### Identification of Highly Variable Features
+
+We find a subset of features that exhibit high cell-to-cell variation in the dataset. These genes are thought be the most biological relevant genes, and by focussing on these features the computations will become more efficient in the downstream analysis. We choose to find the 2000 most variable genes, which is the default value for the FindVariableFeatures function.
+
+```{r}
+seu_obj_ex_filtered <- FindVariableFeatures(seu_obj_ex_filtered,
+                                                  selection.method = "vst",
+                                                  nfeatures = 2000)
+```
+
+### Scale Data
+
+The normalized counts for the variable genes are scaled, that is, the mean expression across cells becomes 0 and the variance across cells is 1. This step is a standard step prior to dimensional reduction techniques.
+
+```{r}
+seu_obj_ex_filtered <- ScaleData(seu_obj_ex_filtered,
+                              features = VariableFeatures(object = seu_obj_ex_filtered))
+```
+
+### Dimensionality Reduction
+
+To visualize the data in an UMAP plot later on, linear dimensional reduction, PCA, is performed.
+
+```{r}
+seu_obj_ex_filtered <- RunPCA(seu_obj_ex_filtered,
+                              features = VariableFeatures(object = seu_obj_ex_filtered))
+
+ElbowPlot(seu_obj_ex_filtered, reduction = "pca")
+```
+
+From the elbow plot, we should be fine with using above 20 dimensions.
+
+```{r}
+seu_obj_ex_filtered <- RunUMAP(seu_obj_ex_filtered, dims = 1:30)
+```
+
+The current steps are saved.
+
+```{r}
+saveRDS(seu_obj_ex_filtered, file = paste(data_path,
+                                       "seurat_data/seu_obj_filtered.rds",
+                                       sep = "/"))
+```
+
+### Doublet Score
+
+First, the Seurat object with the filtered data is loaded to the enviroment.
+
+```{r}
+seu_obj_filtered <- readRDS(paste(data_path,
+                                           "seurat_data/seu_obj_filtered.rds",
+                                           sep="/"))
+```
+
+We convert the seurat object to a sce object and save the variable features to be used for doublet detection.
+
+```{r}
+seu_obj_filtered[["RNA"]] <- as(object = seu_obj_filtered[["RNA"]], Class = "Assay")
+
+sce <- as.SingleCellExperiment(seu_obj_filtered)
+
+sce_top_var <- VariableFeatures(seu_obj_filtered)
+```
+
+Doublet scores are computed with computeDoubletDensity described in
+
+<https://rdrr.io/github/plger/scDblFinder/man/computeDoubletDensity.html>
+
+The procedure is as follows:
+
+1)  A number of doublets (controlled by the parameter "niters" computeDoubletDensity) are simulated by adding the count vectors for two randomly chosen cells in the count matrix.
+
+2)  In a low-dimensional space after a PCA on the log-normalized expression matrix, the density of neighboring artificial doublets for each cell is computed and compared to the density of neighboring original cells to yield a doublet score.
+
+```{r}
+sce_dbl_dens <- computeDoubletDensity(sce,
+                                      subset.row = sce_top_var,
+                                      d = ncol(reducedDim(sce)))
+
+sce$DoubletScore <- sce_dbl_dens
+```
+
+We visualize the cells in a UMAP plot colored by the doublet score.
+
+```{r}
+umapplot_doubletscore <- plotUMAP(sce, colour_by = "DoubletScore")
+
+ggsave(filename = "umapplot_doubletscore.png",
+         path = results_path,
+         plot = umapplot_doubletscore)
+
+umapplot_doubletscore
+```
+
+As expected, cells with a high doublet score tend to cluster together.
+
+### Doublet Thresholding
+
+We use doubletThresholding to establish a threshold for the doublet score to call the doublets.
+
+```{r}
+sce_dbl_calls <- doubletThresholding(data.frame(score = sce_dbl_dens),
+                                              method ="griffiths",
+                                              returnType ="call")
+
+print(paste("Singlets: ", 
+            summary(sce_dbl_calls)[1], 
+            " (",
+            round(summary(sce_dbl_calls)[1]/length(sce_dbl_calls) * 100, 
+                  digits = 2),
+            "%)",
+      sep = ""))
+
+print(paste("Doublets: ", 
+            summary(sce_dbl_calls)[2], 
+            " (",
+            round(summary(sce_dbl_calls)[2]/length(sce_dbl_calls) * 100, 
+                  digits = 2),
+            "%)",
+      sep = ""))
+```
+
+The amount of doublets seems reasonable. We add the classification to the metadata.
+
+```{r}
+names(sce_dbl_calls) <- colnames(sce)
+
+seu_obj_filtered <- AddMetaData(object = seu_obj_filtered,
+                                         metadata = sce_dbl_calls,
+                                         col.name = "doublet_call")
+```
+
+Let us look at the results.
+
+```{r}
+cell_status <- seu_obj_filtered@meta.data
+cell_status$HTO_classification.global <- factor(cell_status$HTO_classification.global,
+                                                         levels = c("Singlet", "Doublet", "Negative"))
+cell_status$doublet_call <- factor(cell_status$doublet_call,
+                                            levels = c("singlet", "doublet"),
+                                            labels = c("Singlet", "Doublet"))
+
+label(cell_status$HTO_classification.global) <- "HTODemux Classification"   
+label(cell_status$doublet_call) <- "scDblFinder Classification"   
+
+table1(data = cell_status, 
+       ~ doublet_call | HTO_classification.global,
+       caption = "HTODemux Classification")
+```
+
+43.1% of the cells being identified as doublets by HTODemux are classified as singlets from doublet identification by the scDblFinder. Let us see the results for each experiment.
+
+```{r}
+table1(data = cell_status, 
+       ~ doublet_call + HTO_classification.global | timepoint,
+       caption = "Lane")
+```
+
+For the both classifications, the rate of doublets pr. lane is almost the same, so the doublets seem to be somewhat distributed equally across lanes.
+
+```{r}
+cell_status$id <- factor(cell_status$id)
+label(cell_status$id) <- "ID"  
+
+table1(data = cell_status, 
+       ~ id | HTO_classification.global)
+```
+
+We choose to remove the doublets identified by the doublet score.
+
+```{r}
+seu_obj_preprocessed <- subset(seu_obj_filtered,
+                               subset = doublet_call == "singlet")
+
+
+print(paste("Genes removed: ", 
+            dim(seu_obj_filtered)[1] - dim(seu_obj_preprocessed)[1], 
+            " (",
+            round((dim(seu_obj_filtered)[1] - dim(seu_obj_preprocessed)[1])/dim(seu_obj_filtered)[1] * 100, 
+                  digits = 2),
+            "%)",
+      sep = ""))
+
+print(paste("Cells removed: ", 
+            dim(seu_obj_filtered)[2] - dim(seu_obj_preprocessed)[2], 
+            " (",
+            round((dim(seu_obj_filtered)[2] - dim(seu_obj_preprocessed)[2])/dim(seu_obj_filtered)[2] * 100, 
+                  digits = 2),
+            "%)",
+      sep = ""))
+```
+
+We look how many at the numbers for the HTO classification again.
+
+```{r}
+remain <- table(seu_obj_preprocessed@meta.data$HTO_classification.global)
+
+remain
+print(paste("Doublets and negatives now corresponding to ",
+            round(sum(remain[1:2])/sum(remain)*100, 2), 
+            "%",
+            sep = ""))
+```
+
+Let us inspect the heatmap ones more.
+
+```{r}
+heatmap_post_filtering <- HTOHeatmap(seu_obj_preprocessed,
+                                     assay = "HTO",
+                                     ncells = 10000) +
+  ggtitle("HTO identity") +
+  theme(plot.title = element_text(hjust = 0.5))
+
+ggsave(filename = "heatmap_post_filtering.png",
+         path = results_path,
+         plot = heatmap_post_filtering)
+
+heatmap_post_filtering
+```
+
+The final Seurat object is saved.
+
+```{r}
+saveRDS(seu_obj_preprocessed, 
+        file = paste(data_path,
+                     "seurat_data/seu_obj_preprocessed.rds",
+                     sep = "/"))
+```
