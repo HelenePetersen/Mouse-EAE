@@ -6,9 +6,13 @@ editor: visual
 
 ## Introduction
 
-WRITE ABOUT THE SET UP HERE.
+Multiple sclerosis (MS) is an autoimmune condition, where the immune system attacks myelin coat in brain and spinal cord. This leads to lack of coordination, balance, muscle spasms, vision problems, paralysis, etc. In Denmark, approximately 14,500 individuals are diagnosed with MS. It is estimated that 2.3 million people have MS worldwide. Treatments for MS seek to slow disease progression and manage symptoms, but the disease can not be cured.
 
-For clarity, an experiment refers to B0, B11 or B21. An experiments is characterized by all cells being loaded onto the same lane for sequencing. A sample refers to cells comming from the same replicate, that is the same mouse.
+γδT cells producing the pro-inflammatory cytokines interleukin-17A (IL-17A) and IL-17F (γδT17) can mediate local immune responses against fungal or bacterial infections, contribute to tissue homeostasis during anti-viral responses, and regulate body thermogenesis. Moreover, γδT17 cells are involved in the pathology of local inflammatory immune diseases including inflammation in the central nervous system (CNS). Studies have shown that tissue resident γδT17 cells express mainly Vγ6 or Vγ4 TCR chains.
+
+This project aims to characterize neuropathogenic γδT cells by experimental autoimmune encephalomyelitis (EAE) - an animal model of CNS demyelinating diseases. EAE is induced in mice, and γδT cells are sorted and sequenced for 3 replicates on the day of induction (B0, naive), 11 days after EAE (B11) and 21 days after EAE (B21).
+
+For clarity, an experiment refers to B0, B11 or B21. An experiment is characterized by all cells being loaded onto the same lane for sequencing. A sample refers to cells coming from the same replicate, that is the same mouse.
 
 ## Preparation
 
@@ -18,7 +22,7 @@ In the following section, the single cell data is loaded to create a Seurat obje
 
 Relevant libraries are loaded.
 
-```{r, message = false}
+```{r, message = FALSE}
 library(Seurat)
 library(tidyverse)
 library(stringr)
@@ -109,7 +113,7 @@ seu_obj <- PercentageFeatureSet(seu_obj,
                                 col.name = "percent_ribo")
 ```
 
-Let us take a look at what is available at this point. 
+Let us take a look at what is available at this point.
 
 ```{r}
 colnames(seu_obj@meta.data)
@@ -181,7 +185,7 @@ exp_label <- names(table(seu_obj@meta.data$experiment))
 exp_numb <- length(exp_label)
 ```
 
-We inspect the distribution for different variables in the metadata to decide the filtering thresholds. First, let's take a look at the distribution of molecules across experiments. 
+We inspect the distribution for different variables in the metadata to decide the filtering thresholds. First, let's take a look at the distribution of molecules across experiments.
 
 ```{r}
 thres_molecules <- data.frame(group = factor(exp_label),
@@ -254,6 +258,7 @@ ggsave(filename = "vlnEXP_genes.png",
        width = 6,
        height = 4)
 ```
+
 ```{r}
 qcPlotDens(seu_obj,
            experiment,
@@ -300,7 +305,7 @@ ggsave(filename = "scatterEXP.png",
 
 The number of molecules vs. genes seems to be nicely correlated. Data points in the bottom right corner would indicate low quality cells, where the same genes are being sequenced over and over again. Cells in the top left corner could be doublets resulting in a large number of detected genes.
 
-Experiment B21 is characterized by cells having a low number of total RNA molecules being sequenced. Also very few genes are being expressed indicating that these cells might be exhausted (and potentially dying) cells. A high mitochondrial content would indicate dying cells, but surprisingly the percentage of mitochondrial content does not differ between experiments as seen below. 
+Experiment B21 is characterized by cells having a low number of total RNA molecules being sequenced. Also very few genes are being expressed indicating that these cells might be exhausted (and potentially dying) cells. A high mitochondrial content would indicate dying cells, but surprisingly the percentage of mitochondrial content does not differ between experiments as seen below.
 
 ```{r, message = FALSE}
 thres_mito <- data.frame(group = factor(exp_label),
@@ -337,8 +342,7 @@ qcPlotVln(seu_obj,
           "Ribosomal content (%)") +
   scale_y_continuous() +
   theme(legend.position = "None") +
-  labs(title = "Distribution of The Ribosomal Content Across Experiments",
-       caption = "Red lines indicates filtering threshold.")
+  labs(title = "Distribution of The Ribosomal Content Across Experiments")
 
 ggsave(filename = "vlnEXP_ribo.png",
        path = result_path,
@@ -346,7 +350,7 @@ ggsave(filename = "vlnEXP_ribo.png",
        height = 4)
 ```
 
-We filter the cells based on the chosen thresholds for QC. We also remove all ribosomal genes. 
+We filter the cells based on the chosen thresholds for QC. We also remove all ribosomal genes.
 
 ```{r, warning = FALSE}
 # Overwrite NA values in gene number threshold data frame. 
@@ -496,7 +500,7 @@ We will chose to focus on HTO_classification.global, HTO_maxID and hash.ID:
 
 -   hash.ID - Classification result (replicate, doublet or negative).
 
-We look at the number of cells classified as singlets, doublets and negative/ambiguous cells across the three experiments. 
+We look at the number of cells classified as singlets, doublets and negative/ambiguous cells across the three experiments.
 
 ```{r}
 label(seu_obj_filtered@meta.data$HTO_classification.global) <- "HTO Classification"
@@ -505,7 +509,7 @@ table1(data = seu_obj_filtered@meta.data,
        caption = "Experiment")
 ```
 
-We inspect the expression of the hashtags for the each of the classes given by hash.ID to see how the demultiplexing went. 
+We inspect the expression of the hashtags for the each of the classes given by hash.ID to see how the demultiplexing went.
 
 ```{r, message = FALSE}
 # Replicate labels.
@@ -562,7 +566,7 @@ ggsave(filename = "ridgeplot.png",
 ridgeplot_all
 ```
 
-It seems that the demultiplexing based on data from HTO expression went well. We visualize pairs of HTO signals to further explore the results. 
+It seems that the demultiplexing based on data from HTO expression went well. We visualize pairs of HTO signals to further explore the results.
 
 ```{r}
 qcPlotScatterHTO <- function(data, feature, feature_name){
@@ -629,7 +633,7 @@ ggsave(filename = "vlnHTO_molecules.png",
        height = 6)
 ```
 
-From the plots, there seems to be two distributions. This might be because of huge differences in the number of RNA molecules expressed for each experiment. However, the doublets seems to have a higher number of molecules compared to the single cells as expected. We take a look at the number of genes. 
+From the plots, there seems to be two distributions. This might be because of huge differences in the number of RNA molecules expressed for each experiment. However, the doublets seems to have a higher number of molecules compared to the single cells as expected. We take a look at the number of genes.
 
 ```{r}
 qcPlotVln(seu_obj_filtered, 
@@ -680,12 +684,12 @@ seu_obj_filtered$HTO_maxID <- factor(str_replace(seu_obj_filtered$HTO_maxID,
                                                  replacement = "\\1"))
 ```
 
-The names are modified, and we take a look at the available metadata. 
+The names are modified, and we take a look at the available metadata.
 
 ```{r}
 colnames(seu_obj_filtered@meta.data)[6:7] <- c("replicate", "hto_class")
 
-sample(seu_obj_filtered@meta.data)
+seu_obj_filtered@meta.data[1:10,]
 ```
 
 ## Doublet Detection
@@ -799,17 +803,21 @@ ggsave(filename = "doublets.png",
        height = 6)
 ```
 
-The intra- and inter-sample doublet are removed from the final filtered data set. The HTO assay will not be included. 
+The intra- and inter-sample doublet are removed from the final filtered data set. The negative cells are removed as well.
 
 ```{r}
-seu_obj_filtered2 <- subset(seu_obj_filtered2,
-                            subset = doublet == "Singlet")
+seu_obj_filtered <- subset(seu_obj_filtered,
+                           subset = doublet == "Singlet" & hto_class == "Singlet")
 ```
 
-The current steps are saved.
+The classification of the cells are now irrelevant, as all cells are thought to be singlets. Thus, this metadata is removed before the filtered Seurat object is saved. The HTO assay will no longer be included. 
 
 ```{r}
-saveRDS(melanoma_seu_obj_filtered, file = paste(data_path,
-                                       "seurat_data/melanoma_seu_obj_filtered.rds",
-                                       sep = "/"))
+seu_obj_filtered$hto_class  <- NULL
+seu_obj_filtered$pred       <- NULL
+seu_obj_filtered$doublet    <- NULL
+seu_obj_filtered@assays$HTO <- NULL
+
+saveRDS(seu_obj_filtered, 
+        file = "data/seurat_data/seu_obj_filtered.rds")
 ```
