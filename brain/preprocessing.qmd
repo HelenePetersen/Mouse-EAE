@@ -34,7 +34,8 @@ library(grid)
 Define the path to get the data and save results. The path might have to be changed.
 
 ```{r}
-data_path <- "/Volumes/Department/Sund/Public/T-Cell-Signalling-and-Development/VB Lab/10x_data/10xRNA_M-EAE-gdT/data/raw_data"
+data_path <- "/Volumes/10x_data/10xRNA_M-EAE-gdT/data/raw_data"
+
 
 result_path <- "~/Dropbox/Special Project Single Cell/mouse/brain/results/preprocessing"
 ```
@@ -76,7 +77,7 @@ The data consists of in total 6198 cells expressing together 13415 genes. The sa
 
 ```{r}
 seu_obj@meta.data$orig.ident <- factor(seu_obj@meta.data$orig.ident,
-                                       levels = c("1", "2", "3"),
+                                       levels = as.character(unique(seu_obj@meta.data$orig.ident)),
                                        labels = str_extract(string = data_folders_brain,
                                                             pattern = "B\\d+"))
 Idents(seu_obj) <- seu_obj@meta.data$orig.ident 
@@ -86,19 +87,340 @@ table1(data = seu_obj@meta.data,
        ~ orig.ident)
 ```
 
-We see a huge difference between the number of cells coming from each of the experiments. B21 has 10 times as many cells compared to B0.
-
-### Demultiplexing
-
-The following section follows the guide described in the hashing vignette:
-
-<https://satijalab.org/seurat/archive/v3.1/hashing_vignette.html>
-
-We wish to add the hashtag oligo (HTO) data to the Seurat object to identify which replicate each cell comes from within each experiment. As for the gene counts, we select only the data for relevant cells, that is, cells present in both the gene expression data and the HTO expression data.
+We see a huge difference between the number of cells coming from each of the experiments. B21 has 10 times as many cells compared to B0. Finally, we add the hashtag oligo (HTO) data to the Seurat object to identify which replicate each cell comes from within each experiment later on. As for the gene counts, we select only the data for relevant cells, that is, cells present in both the gene expression data and the HTO expression data.
 
 ```{r}
 seu_obj[["HTO"]] <- CreateAssayObject(counts = data$`Antibody Capture`[ , joined_cells])
 ```
+
+### Quality Metrics
+
+The percentage of mitochondrial and ribosomal content is added.
+
+```{r}
+# Mitochondrial content
+seu_obj <- PercentageFeatureSet(seu_obj,
+                                pattern = "^mt-",
+                                col.name = "percent_mt")
+
+# Ribosomal content
+seu_obj <- PercentageFeatureSet(seu_obj,
+                                pattern = "R[sp]l",
+                                col.name = "percent_ribo")
+```
+
+Let us take a look at what is available at this point. 
+
+```{r}
+colnames(seu_obj@meta.data)
+```
+
+The names are modified.
+
+```{r}
+colnames(seu_obj@meta.data)[1:3] <- c("experiment", 
+                                      "nCount_molecules", 
+                                      "nCount_genes")
+```
+
+## Filtering
+
+The goal of filtering is to only include true cells that are of high quality based on the quality metrics generated in the previous section.
+
+### Quality Control
+
+The following code are customized plot function for quality control.
+
+```{r}
+# Violin plot
+qcPlotVln <- function(seu_obj, group, group_name, feature, feature_name){
+  ggplot(data = seu_obj@meta.data,
+         mapping = aes(x = {{group}},
+                       y = {{feature}})) +
+    geom_violin(colour = "#6699CC",
+                fill = "#6699CC",
+                alpha = 0.2) +
+    geom_jitter(size = 1,
+                alpha = 0.4) + 
+    scale_y_log10() +
+    xlab(group_name) + 
+    ylab(feature_name) + 
+    theme_bw()
+}
+
+# Density plot
+qcPlotDens <- function(seu_obj, group, group_name, feature, feature_name){
+  ggplot(data = seu_obj@meta.data,
+         mapping = aes(x = {{feature}},
+                       fill = {{group}})) +
+    geom_density(alpha = 0.2) +
+    scale_x_log10() +
+    xlab(feature_name) + 
+    ylab("Density") + 
+    theme_bw() +
+    labs(fill = group_name)
+}
+
+# Scatter plot
+qcPlotScatter <- function(seu_obj, feature1, feature2, feature_name){
+  ggplot(data = seu_obj@meta.data,
+         mapping = aes(x = {{feature1}},
+                       y = {{feature2}})) +
+  geom_point(colour = "#6699CC",
+             fill = "#6699CC",
+             alpha = 0.5) +
+  xlab(feature_name[1]) + 
+  ylab(feature_name[2]) +
+  theme_bw()
+}
+
+# Experiment labels.
+exp_label <- names(table(seu_obj@meta.data$experiment))
+
+# Number of experiments/lanes.
+exp_numb <- length(exp_label)
+```
+
+We inspect the distribution for different variables in the metadata to decide the filtering thresholds. First, let's take a look at the distribution of molecules across experiments. 
+
+```{r}
+thres_molecules <- data.frame(group = factor(exp_label),
+                              threshold_down = c(1000, 1000, 100),
+                              threshold_up = c(10000, 10000, 1000))
+
+qcPlotVln(seu_obj,
+          experiment,
+          "Experiment",
+          nCount_molecules,
+          "Number of molecules") +
+  geom_boxplot(data = thres_molecules,
+               mapping = aes(x = group,
+                             y = threshold_up),
+               color = "#CC3333") +
+  geom_boxplot(data = thres_molecules,
+               mapping = aes(x = group,
+                             y = threshold_down),
+               color = "#CC3333") +
+  theme(legend.position = "None") +
+  labs(title = "Distribution of The Number of Molecules Across Experiments",
+       caption = "Red lines indicates filtering threshold.")
+
+ggsave(filename = "vlnEXP_molecules.png",
+       path = result_path,
+       width = 6,
+       height = 4)
+```
+
+```{r}
+qcPlotDens(seu_obj,
+           experiment,
+           "Experiment",
+           nCount_molecules,
+           "Number of molecules") +
+  labs(title = "Distribution of The Number of Molecules Across Experiments")
+
+ggsave(filename = "densEXP_molecules.png",
+       path = result_path,
+       width = 7,
+       height = 4)
+```
+
+There is a huge difference between the experiments when it comes to the distribution of the total number of molecules pr. cell. Let us take a look on the distribution for the number of genes.
+
+```{r, warning = FALSE}
+thres_genes <- data.frame(group = factor(exp_label),
+                          threshold_down = c(NA, NA, 100),
+                          threshold_up = c(3000, 3000, NA))
+
+qcPlotVln(seu_obj,
+          experiment,
+          "Experiment",
+          nCount_genes,
+          "Number of genes") +
+  geom_boxplot(data = thres_genes,
+               mapping = aes(x = group,
+                             y = threshold_up),
+               color = "#CC3333") +
+  geom_boxplot(data = thres_genes,
+               mapping = aes(x = group,
+                             y = threshold_down),
+               color = "#CC3333") +
+  theme(legend.position = "None") +
+  labs(title = "Distribution of The Number of Genes Across Experiments",
+       caption = "Red lines indicates filtering threshold.")
+
+ggsave(filename = "vlnEXP_genes.png",
+       path = result_path,
+       width = 6,
+       height = 4)
+```
+```{r}
+qcPlotDens(seu_obj,
+           experiment,
+           "Experiment",
+           nCount_genes,
+           "Number of genes") +
+  labs(title = "Distribution of The Number of Genes Across Experiments")
+
+ggsave(filename = "densEXP_genes.png",
+       path = result_path,
+       width = 7,
+       height = 4)
+```
+
+We take a look at the number of RNA molecules pr. cell vs. the number of genes.
+
+```{r, warning = FALSE}
+# Create list to store plots. 
+list_scatter <- list()
+
+for (i in 1:exp_numb){
+  list_scatter[[i]] <- qcPlotScatter(subset(seu_obj,
+                                            experiment == exp_label[i]),
+                                     nCount_molecules,
+                                     nCount_genes,
+                                     c("Number of molecules", "Number of genes")) +
+    geom_vline(xintercept = c(thres_molecules[i, ]$threshold_down,
+                              thres_molecules[i, ]$threshold_up),
+               colour = "#CC3333") +
+    geom_hline(yintercept = c(thres_genes[i, ]$threshold_down,
+                              thres_genes[i, ]$threshold_up),
+               colour = "#CC3333") +
+    labs(title = exp_label[i])
+}
+
+# Combine the plots.
+list_scatter[[1]] | list_scatter[[2]] | list_scatter[[3]]
+
+ggsave(filename = "scatterEXP.png",
+       path = result_path,
+       width = 18,
+       height = 6)
+```
+
+The number of molecules vs. genes seems to be nicely correlated. Data points in the bottom right corner would indicate low quality cells, where the same genes are being sequenced over and over again. Cells in the top left corner could be doublets resulting in a large number of detected genes.
+
+Experiment B21 is characterized by cells having a low number of total RNA molecules being sequenced. Also very few genes are being expressed indicating that these cells might be exhausted (and potentially dying) cells. A high mitochondrial content would indicate dying cells, but surprisingly the percentage of mitochondrial content does not differ between experiments as seen below. 
+
+```{r, message = FALSE}
+thres_mito <- data.frame(group = factor(exp_label),
+                          threshold_down = c(NA, NA, NA),
+                          threshold_up = c(4, 4, 4))
+
+qcPlotVln(seu_obj,
+          experiment,
+          "Experiment",
+          percent_mt,
+          "Mitochondrial content (%)") +
+  geom_boxplot(data = thres_mito,
+               mapping = aes(x = group,
+                             y = threshold_up),
+               color = "#CC3333") +
+  scale_y_continuous() +
+  theme(legend.position = "None") +
+  labs(title = "Distribution of The Mitochondrial Content Across Experiments",
+       caption = "Red lines indicates filtering threshold.")
+
+ggsave(filename = "vlnEXP_mito.png",
+       path = result_path,
+       width = 6,
+       height = 4)
+```
+
+We will only keep cells with less that 4% mitochondrial content. Finally, we investigate how large a percentage of the genes are ribosomal genes.
+
+```{r, message = FALSE}
+qcPlotVln(seu_obj,
+          experiment,
+          "Experiment",
+          percent_ribo,
+          "Ribosomal content (%)") +
+  scale_y_continuous() +
+  theme(legend.position = "None") +
+  labs(title = "Distribution of The Ribosomal Content Across Experiments",
+       caption = "Red lines indicates filtering threshold.")
+
+ggsave(filename = "vlnEXP_ribo.png",
+       path = result_path,
+       width = 6,
+       height = 4)
+```
+
+We filter the cells based on the chosen thresholds for QC. We also remove all ribosomal genes. 
+
+```{r, warning = FALSE}
+# Overwrite NA values in gene number threshold data frame. 
+thres_genes$threshold_down[is.na(thres_genes$threshold_down)] <- 0
+thres_genes$threshold_up[is.na(thres_genes$threshold_up)] <- Inf
+
+# Create list to collect Seurat objects for each experiment.
+list_seu_obj <- list()
+
+for (i in 1:exp_numb){
+  # Get the cells from the experiment.
+  exp_seu_obj <- subset(seu_obj,
+                        experiment == exp_label[i])
+  
+  exp_seu_obj <- subset(exp_seu_obj,
+                        subset = nCount_molecules > thres_molecules$threshold_down[i] & nCount_molecules < thres_molecules$threshold_up[i] & nCount_genes >  thres_genes$threshold_down[i] & nCount_genes < thres_genes$threshold_up[i] & percent_mt < thres_mito$threshold_up[i])
+  
+  # Save the results.
+  list_seu_obj[i] <- exp_seu_obj
+}
+
+# Merge the Seurat objects created for each experiment. 
+seu_obj_filtered <- merge(unlist(list_seu_obj)[[1]],
+                          y = unlist(list_seu_obj)[2:exp_numb])
+
+# Join layers.
+seu_obj_filtered[["RNA"]] <- JoinLayers(seu_obj_filtered[["RNA"]])
+
+# Remove ribosomal genes.
+seu_obj_filtered <- seu_obj_filtered[!grepl("R[sp]l", rownames(seu_obj_filtered)), ]
+
+# Add HTO data.
+seu_obj_filtered[["HTO"]] <- CreateAssayObject(counts = seu_obj@assays$HTO$data[, colnames(seu_obj_filtered)])
+```
+
+Lets us see how many cells were removed.
+
+```{r}
+filtering_numb <- tibble(experiment = exp_label,
+                         n_old = table(seu_obj@meta.data$experiment),
+                         n_new = table(seu_obj_filtered@meta.data$experiment)) %>%
+  mutate(n_removed = n_old - n_new,
+         p_removed = round(n_removed/n_old*100, digits = 2)) 
+
+filtering_numb
+```
+
+The percentage of cells removed from each experiment is 2.4-4.8%, which seems reasonable. We see how many cells and genes are removed in total.
+
+```{r}
+print(paste("Genes removed: ", 
+            dim(seu_obj)[1] - dim(seu_obj_filtered)[1], 
+            " (",
+            round((dim(seu_obj)[1] - dim(seu_obj_filtered)[1])/dim(seu_obj)[1] * 100, 
+                  digits = 2),
+            "%)",
+      sep = ""))
+
+print(paste("Cells removed: ", 
+            dim(seu_obj)[2] - dim(seu_obj_filtered)[2], 
+            " (",
+            round((dim(seu_obj)[2] - dim(seu_obj_filtered)[2])/dim(seu_obj)[2] * 100, 
+                  digits = 2),
+            "%)",
+      sep = ""))
+```
+
+## Demultiplexing
+
+We wish to demultiplex cells to their the original sample-of-origin and identify doublets. The following section follows the guide described in the hashing vignette:
+
+<https://satijalab.org/seurat/archive/v3.1/hashing_vignette.html>
+
+### Assign Cells To Replicate
 
 Before assigning the cells back to their sample origins, the HTO data is normalized using centered log ratio (CLR) transformation, where counts were divided by the geometric mean of an HTO across cells in a single experiment and log-transformed:
 
@@ -124,48 +446,42 @@ Afterwards, we can compared the HTO expression for each of the cells. If their e
 
 The 0.99 quantile for the negative binomial distribution is the default value for the HTODemux function. Lowering the threshold will result in less cells being classified as negatives. However, more cells would be thought as doublets.
 
-```{r, message = FALSE}
+```{r, message = FALSE, warning = FALSE}
 # Create list to collect Seurat objects for each lane.
 list_seu_obj <- list()
 
-# Experiment labels.
-exp_label <- names(table(seu_obj@meta.data$orig.ident))
-
-# Number of experiments/lanes.
-exp_numb <- length(exp_label)
-
 for (i in 1:exp_numb){
   # Get the cells from a single 10x lane.
-  exp_seu_obj <- subset(seu_obj,
-                        orig.ident == exp_label[i])
+  exp_seu_obj <- subset(seu_obj_filtered,
+                        experiment == exp_label[i])
   
   # Normalize the HTO expression levels.
   exp_seu_obj <- NormalizeData(exp_seu_obj,
-                                assay = "HTO",
-                                normalization.method = "CLR")
+                               assay = "HTO",
+                               normalization.method = "CLR")
   
   # Demultiplex cells to their the original sample-of-origin.
   exp_seu_obj <- HTODemux(exp_seu_obj,
-                           assay = "HTO",
-                           positive.quantile = 0.99)
+                          assay = "HTO",
+                          positive.quantile = 0.99)
   
   # Save the results.
   list_seu_obj[i] <- exp_seu_obj
 }
 
 # Merge the Seurat objects created for each experiment. 
-seu_obj <- merge(unlist(list_seu_obj)[[1]],
-                 y = unlist(list_seu_obj)[2:exp_numb])
+seu_obj_filtered <- merge(unlist(list_seu_obj)[[1]],
+                          y = unlist(list_seu_obj)[2:exp_numb])
 
-seu_obj
+seu_obj_filtered
 ```
 
 Seurat v5 assays store the count data in layers after merge. These layers are joined.
 
 ```{r}
-seu_obj[["RNA"]] <- JoinLayers(seu_obj[["RNA"]])
+seu_obj_filtered[["RNA"]] <- JoinLayers(seu_obj_filtered[["RNA"]])
 
-seu_obj
+seu_obj_filtered
 ```
 
 There are a lot of information from the demultiplexing added to the metadata. Information about the output from HTODemux can be found here:
@@ -174,18 +490,18 @@ There are a lot of information from the demultiplexing added to the metadata. In
 
 We will chose to focus on HTO_classification.global, HTO_maxID and hash.ID:
 
--   HTO.maxID - Name of hashtag with the highest signal
+-   HTO.maxID - Name of hashtag with the highest signal.
 
--   HTO_classification.global - Global classification result (singlet, doublet or negative)
+-   HTO_classification.global - Global classification result (singlet, doublet or negative).
 
--   hash.ID - Classification result (replicate, doublet or negative)
+-   hash.ID - Classification result (replicate, doublet or negative).
 
 We look at the number of cells classified as singlets, doublets and negative/ambiguous cells across the three experiments. 
 
 ```{r}
-label(seu_obj@meta.data$HTO_classification.global) <- "HTO Classification"
-table1(data = seu_obj@meta.data,
-       ~ HTO_classification.global | orig.ident,
+label(seu_obj_filtered@meta.data$HTO_classification.global) <- "HTO Classification"
+table1(data = seu_obj_filtered@meta.data,
+       ~ HTO_classification.global | experiment,
        caption = "Experiment")
 ```
 
@@ -193,22 +509,23 @@ We inspect the expression of the hashtags for the each of the classes given by h
 
 ```{r, message = FALSE}
 # Replicate labels.
-rep_label <- rownames(seu_obj[["HTO"]])
+rep_label <- rownames(seu_obj_filtered[["HTO"]])
 
 # Number of experiments/lanes.
 rep_numb <- length(rep_label)
 
 hashtag <- c("Replicate 1", "Replicate 2", "Replicate 3")
 
-Idents(seu_obj) <- factor(seu_obj@meta.data$hash.ID,
-                          levels = c(rep_label, "Doublet", "Negative"),
-                          labels = c(hashtag, "Doublet", "Negative"))
+Idents(seu_obj_filtered) <- factor(seu_obj_filtered@meta.data$hash.ID,
+                                   levels = c(rep_label, "Doublet", "Negative"),
+                                   labels = c(hashtag, "Doublet", "Negative"))
 
 # Create list to gather the plots.
 list_ridgeplot <- list()
 
 for (i in 1:exp_numb){
-  ridgeplot_sample <- RidgePlot(subset(seu_obj, orig.ident == exp_label[i]),
+  ridgeplot_sample <- RidgePlot(subset(seu_obj_filtered, 
+                                       experiment == exp_label[i]),
                                 assay = "HTO",
                                 features = rep_label,
                                 combine = FALSE) 
@@ -247,7 +564,6 @@ ridgeplot_all
 
 It seems that the demultiplexing based on data from HTO expression went well. We visualize pairs of HTO signals to further explore the results. 
 
-
 ```{r}
 qcPlotScatterHTO <- function(data, feature, feature_name){
   FeatureScatter({{data}}, 
@@ -280,7 +596,7 @@ list_scatterHTO <- list()
 
 for (i in 1:length(unique_pairs)){
   rep_label_clean <- str_replace(rep_label, "M.Rep(\\d)", "Rep(\\d)")
-  list_scatterHTO[[i]] <- qcPlotScatterHTO(seu_obj,  
+  list_scatterHTO[[i]] <- qcPlotScatterHTO(seu_obj_filtered,  
                                            unique_pairs[[i]],
                                            str_replace(unique_pairs[[i]], 
                                                        "M.Rep(\\d)", 
@@ -302,24 +618,9 @@ scatterHTO_all
 The scatter plots show that negatives are mainly found for cells expressing HTO for replicate 2. Some cells are also classified as doublets though they have high expression of a single HTO. We take a look at the number of RNA molecules across the HTO classification groups.
 
 ```{r}
-qcPlotVln <- function(seu_obj, group, group_name, feature, feature_name){
-  ggplot(data = seu_obj@meta.data,
-         mapping = aes(x = {{group}},
-                       y = {{feature}})) +
-    geom_violin(colour = "#6699CC",
-                fill = "#6699CC",
-                alpha = 0.2) +
-    geom_jitter(size = 1,
-                alpha = 0.4) + 
-    scale_y_log10() +
-    xlab(group_name) + 
-    ylab(feature_name) + 
-    theme_bw()
-}
-
-qcPlotVln(seu_obj, 
+qcPlotVln(seu_obj_filtered, 
           HTO_classification.global, "HTO Classification", 
-          nCount_RNA, "Number of molecules") + 
+          nCount_molecules, "Number of molecules") + 
   labs(title = "Number of RNA Molecules Across HTO Classification Groups")
 
 ggsave(filename = "vlnHTO_molecules.png",
@@ -331,9 +632,9 @@ ggsave(filename = "vlnHTO_molecules.png",
 From the plots, there seems to be two distributions. This might be because of huge differences in the number of RNA molecules expressed for each experiment. However, the doublets seems to have a higher number of molecules compared to the single cells as expected. We take a look at the number of genes. 
 
 ```{r}
-qcPlotVln(seu_obj, 
+qcPlotVln(seu_obj_filtered, 
           HTO_classification.global, "HTO Classification", 
-          nFeature_RNA, "Number of genes") + 
+          nCount_genes, "Number of genes") + 
   labs(title = "Number of Genes Across HTO Classification Groups")
 
 ggsave(filename = "vlnHTO_genes.png",
@@ -345,9 +646,9 @@ ggsave(filename = "vlnHTO_genes.png",
 Again, the distribution of the number of genes per cell tends to be a bit higher for the doublets than the singlets. The HTO demultiplexing results can also be visualized by the heatmap below.
 
 ```{r}
-heatmap_prefiltering <- HTOHeatmap(seu_obj,
+heatmap_prefiltering <- HTOHeatmap(seu_obj_filtered,
                                    assay = "HTO",
-                                   ncells = dim(seu_obj)[1]) +
+                                   ncells = dim(seu_obj_filtered)[1]) +
   ggtitle("HTO Signals Across The Cells") +
   theme(plot.title = element_text(hjust = 0.5))
 
@@ -358,227 +659,157 @@ ggsave(filename = "heatmap_prefiltering.png",
 heatmap_prefiltering
 ```
 
-### Metadata
+### Remove Metadata
 
-The percentage of mitochondrial and ribosomal content is added.
-
-```{r}
-# Mitochondrial content
-seu_obj <- PercentageFeatureSet(seu_obj,
-                                pattern = "^mt-",
-                                col.name = "percent_mt")
-
-# Ribosomal content
-seu_obj <- PercentageFeatureSet(seu_obj,
-                                pattern = "R[sp]l",
-                                col.name = "percent_ribo")
-```
-
-The metadata is cleaned up to remove unrelevant columns. First, let us take a look at what is available at this point. 
+The metadata is cleaned up to remove unrelevant columns. We wish to remove nCount_HTO, nFeature_HTO, HTO_secondID, HTO_margin, HTO_classification.
 
 ```{r}
-colnames(seu_obj@meta.data)
-```
-We wish to remove nCount_HTO, nFeature_HTO, HTO_secondID, HTO_margin, HTO_classification.
-
-```{r}
-seu_obj$nCount_HTO         <- NULL
-seu_obj$nFeature_HTO       <- NULL
-seu_obj$HTO_secondID       <- NULL
-seu_obj$HTO_margin         <- NULL
-seu_obj$HTO_classification <- NULL
-seu_obj$hash.ID            <- NULL
+seu_obj_filtered$nCount_HTO         <- NULL
+seu_obj_filtered$nFeature_HTO       <- NULL
+seu_obj_filtered$HTO_secondID       <- NULL
+seu_obj_filtered$HTO_margin         <- NULL
+seu_obj_filtered$HTO_classification <- NULL
+seu_obj_filtered$hash.ID            <- NULL
 ```
 
 We change the HTO_maxID, such that the replicate is decribed only by the digit.
 
 ```{r}
-seu_obj$HTO_maxID <- factor(str_replace(seu_obj$HTO_maxID,
-                                        pattern = "M.Rep(\\d)",
-                                        replacement = "\\1"))
+seu_obj_filtered$HTO_maxID <- factor(str_replace(seu_obj_filtered$HTO_maxID,
+                                                 pattern = "M.Rep(\\d)",
+                                                 replacement = "\\1"))
 ```
 
-The names are modified to ensure consistency. 
+The names are modified, and we take a look at the available metadata. 
 
 ```{r}
-colnames(seu_obj@meta.data) <- c("experiment", "nCount_molecules", "nCount_genes", "replicate", "hto_class", "percent_mt", "percent_ribo")
+colnames(seu_obj_filtered@meta.data)[6:7] <- c("replicate", "hto_class")
 
-label(seu_obj@meta.data$hto_class) <- NULL
-
-sample(seu_obj@meta.data)
+sample(seu_obj_filtered@meta.data)
 ```
 
-## Filtering
+## Doublet Detection
 
-The goal of filtering is to only include true cells that are of high quality based on the quality metrics generated in the previous section.
+We wish to identify doublets using the scDblFinder package, which gathers various methods for the detection and handling of doublets. As seen in the previous section, the HTODemux function can identify doublets, if cells express high levels of multiple HTOs. One limitation of this approach is that doublets of cells marked with the same HTO are not detected (intra-sample doublets). We will try to recover the remaining doublets based on their similarity with known doublets (inter-sample doublets) in the gene expression space. Relevant links are given below:
 
-### Quality Control
+<https://bioconductor.org/packages/release/bioc/vignettes/scDblFinder/inst/doc/recoverDoublets.html>
 
-The following code are customized plot function for quality control.
+<https://bioconductor.org/books/3.13/OSCA.advanced/doublet-detection.html#doublet-detection-in-multiplexed-experiments>
+
+### Normalization
+
+Before doublet detection, we must normalize and find variable features according to the standard Seurat workflow. The counts are normalized by dividing the count for each gene pr. cell by the total counts for that cell and multiplied by a scale factor. This is then log transformed using the natural log.
 
 ```{r}
-qcPlotDens <- function(seu_obj, group, group_name, feature, feature_name){
-  ggplot(data = seu_obj@meta.data,
-         mapping = aes(x = {{feature}},
-                       fill = {{group}})) +
-    geom_density(alpha = 0.2) +
-    scale_x_log10() +
-    xlab(feature_name) + 
-    ylab("Density") + 
-    theme_bw() +
-    labs(fill = group_name)
+seu_obj_filtered <- NormalizeData(seu_obj_filtered,
+                                  normalization.method = "LogNormalize",
+                                  scale.factor = 10000)
+```
+
+### Identification of Highly Variable Features
+
+We find a subset of features that exhibit high cell-to-cell variation in the dataset. These genes are thought be the most biological relevant genes, and by focussing on these features the computations will become more efficient in the downstream analysis. We choose to find the 2000 most variable genes, which is the default value for the FindVariableFeatures function.
+
+```{r}
+seu_obj_filtered <- FindVariableFeatures(seu_obj_filtered,
+                                         selection.method = "vst",
+                                         nfeatures = 2000)
+```
+
+### Scale Data
+
+The normalized counts for the variable genes are scaled, that is, the mean expression across cells becomes 0 and the variance across cells is 1. This step is a standard step prior to dimensional reduction techniques.
+
+```{r}
+seu_obj_filtered <- ScaleData(seu_obj_filtered,
+                              features = VariableFeatures(object = seu_obj_filtered))
+```
+
+### Dimensionality Reduction
+
+To visualize the data in an UMAP plot later on, linear dimensional reduction, PCA, is performed.
+
+```{r}
+seu_obj_filtered <- RunPCA(seu_obj_filtered,
+                           features = VariableFeatures(object = seu_obj_filtered))
+
+ElbowPlot(seu_obj_filtered, reduction = "pca")
+```
+
+From the elbow plot, we should be fine with using above 20 dimensions.
+
+```{r}
+seu_obj_filtered <- RunUMAP(seu_obj_filtered, dims = 1:30)
+```
+
+### Unmarked Doublets
+
+We convert the Seurat object to a sce object and save the variable features to be used for doublet detection.
+
+```{r}
+sce <- as.SingleCellExperiment(seu_obj_filtered,
+                               assay = "RNA")
+```
+
+For each cell, we calculate the proportion of its nearest neighbors that are known doublets (inter-sample doublets) within each experiment. Intra-sample doublets should have high proportions under the assumption that their gene expression profiles are similar to inter-sample doublets.
+
+```{r}
+sce$doublet <- sce$hto_class == "Doublet"
+
+doublet_pred <- c()
+
+for (i in 1:exp_numb){
+  exp_sce <- sce[, sce$experiment == exp_label[i]]
+  
+  doublets <- recoverDoublets(exp_sce,
+                              use.dimred = "PCA",
+                              doublets = exp_sce$doublet,
+                              samples = c(table(exp_sce$replicate)))
+  
+  rownames(doublets) <- colnames(exp_sce)
+  doublet_pred <- rbind(doublet_pred, doublets)
 }
+
+pred <- doublet_pred$predicted
+names(pred) <- rownames(doublet_pred)
+
+seu_obj_filtered <- AddMetaData(object = seu_obj_filtered,
+                                metadata = pred,
+                                col.name = "pred")
 ```
 
-We inspect the distribution for different variables in the metadata to decide the filtering thresholds. First, let's take a look at the distribution of molecules across experiments. 
+We visualize the results.
 
 ```{r}
-thres_molecules <- data.frame(group = factor(exp_label),
-                              threshold_down = c(10000, 10000, 1000),
-                              threshold_up = c(1000, 1000, 100))
+seu_obj_filtered$doublet <- rep("Singlet", dim(seu_obj_filtered)[2])
+seu_obj_filtered$doublet[seu_obj_filtered$hto_class == "Doublet"] <- "Inter-sample doublet"
+seu_obj_filtered$doublet[seu_obj_filtered$pred] <- "Intra-sample doublet"
 
-qcPlotVln(seu_obj,
-          experiment,
-          "Experiment",
-          nCount_molecules,
-          "Number of molecules",
-          NULL) +
-  geom_boxplot(data = thres_molecules,
-               mapping = aes(x = group,
-                             y = threshold_up),
-               color = "#CC3333") +
-  geom_boxplot(data = thres_molecules,
-               mapping = aes(x = group,
-                             y = threshold_down),
-               color = "#CC3333") +
-  theme(legend.position = "None") +
-  labs(title = "Distribution of The Number of Molecules Across Experiments",
-       caption = "Red lines indicates filtering threshold.")
+DimPlot(seu_obj_filtered, 
+        group.by = "doublet",
+        cols = c("#CC3333", "#003399", "#999999"),
+        pt.size = 1) + 
+  labs(title = "") + 
+  xlab("UMAP1") +
+  ylab("UMAP2")
 
-ggsave(filename = "vlnEXP_molecules.png",
+ggsave(filename = "doublets.png",
        path = result_path,
-       width = 6,
-       height = 4)
+       width = 10,
+       height = 6)
 ```
+
+The intra- and inter-sample doublet are removed from the final filtered data set. The HTO assay will not be included. 
 
 ```{r}
-qcPlotDens(seu_obj,
-           experiment,
-           "Experiment",
-           nCount_molecules,
-           "Number of molecules") +
-  labs(title = "Distribution of The Number of Molecules Across Experiments")
-
-ggsave(filename = "densEXP_molecules.png",
-       path = result_path,
-       width = 7,
-       height = 4)
+seu_obj_filtered2 <- subset(seu_obj_filtered2,
+                            subset = doublet == "Singlet")
 ```
 
-There is a huge difference between the experiments when it comes to the distribution of the total number of molecules pr. cell. Let us see if the distribution for the number of genes also differs.
+The current steps are saved.
 
 ```{r}
-thres_genes <- data.frame(group = factor(exp_label),
-                          threshold_down = c(0, 0, 0),
-                          threshold_up = c(0, 0, 0))
-
-qcPlotVln(seu_obj,
-          experiment,
-          "Experiment",
-          nCount_genes,
-          "Number of genes",
-          NULL) +
-  #geom_boxplot(data = thres_genes,
-               #mapping = aes(x = group,
-                             #y = threshold_up),
-               #color = "#CC3333") +
-  #geom_boxplot(data = thres_genes,
-               #mapping = aes(x = group,
-                             #y = threshold_down),
-               #color = "#CC3333") +
-  theme(legend.position = "None") +
-  labs(title = "Distribution of The Number of Genes Across Experiments",
-       caption = "Red lines indicates filtering threshold.")
-
-ggsave(filename = "vlnEXP_genes.png",
-       path = result_path,
-       width = 6,
-       height = 4)
+saveRDS(melanoma_seu_obj_filtered, file = paste(data_path,
+                                       "seurat_data/melanoma_seu_obj_filtered.rds",
+                                       sep = "/"))
 ```
-```{r}
-qcPlotDens(seu_obj,
-           experiment,
-           "Experiment",
-           nCount_genes,
-           "Number of genes") +
-  labs(title = "Distribution of The Number of Genes Across Experiments")
-
-ggsave(filename = "densEXP_genes.png",
-       path = result_path,
-       width = 7,
-       height = 4)
-```
-
-```{r}
-thres_genes <- data.frame(group = factor(exp_label),
-                          threshold_down = c(0, 0, 0),
-                          threshold_up = c(0, 0, 0))
-
-qcPlotVln(seu_obj,
-          experiment,
-          "Experiment",
-          percent_mt,
-          "Mitochondrial content (%)",
-          NULL) +
-  #geom_boxplot(data = thres_genes,
-               #mapping = aes(x = group,
-                             #y = threshold_up),
-               #color = "#CC3333") +
-  #geom_boxplot(data = thres_genes,
-               #mapping = aes(x = group,
-                             #y = threshold_down),
-               #color = "#CC3333") +
-  scale_y_continuous() +
-  theme(legend.position = "None") +
-  labs(title = "Distribution of The Mitochondrial Content Across Experiments",
-       caption = "Red lines indicates filtering threshold.")
-
-ggsave(filename = "vlnEXP_mito.png",
-       path = result_path,
-       width = 6,
-       height = 4)
-```
-
-
-```{r}
-thres_genes <- data.frame(group = factor(exp_label),
-                          threshold_down = c(0, 0, 0),
-                          threshold_up = c(0, 0, 0))
-
-qcPlotVln(seu_obj,
-          experiment,
-          "Experiment",
-          percent_ribo,
-          "Ribosomal content (%)",
-          NULL) +
-  #geom_boxplot(data = thres_genes,
-               #mapping = aes(x = group,
-                             #y = threshold_up),
-               #color = "#CC3333") +
-  #geom_boxplot(data = thres_genes,
-               #mapping = aes(x = group,
-                             #y = threshold_down),
-               #color = "#CC3333") +
-  scale_y_continuous() +
-  theme(legend.position = "None") +
-  labs(title = "Distribution of The Ribosomal Content Across Experiments",
-       caption = "Red lines indicates filtering threshold.")
-
-ggsave(filename = "vlnEXP_ribo.png",
-       path = result_path,
-       width = 6,
-       height = 4)
-```
-
-
-
