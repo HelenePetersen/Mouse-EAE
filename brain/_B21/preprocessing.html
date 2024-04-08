@@ -1,0 +1,1368 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
+
+<meta charset="utf-8">
+<meta name="generator" content="quarto-1.3.450">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+
+
+<title>Preprocessing</title>
+<style>
+code{white-space: pre-wrap;}
+span.smallcaps{font-variant: small-caps;}
+div.columns{display: flex; gap: min(4vw, 1.5em);}
+div.column{flex: auto; overflow-x: auto;}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+ul.task-list{list-style: none;}
+ul.task-list li input[type="checkbox"] {
+  width: 0.8em;
+  margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */ 
+  vertical-align: middle;
+}
+/* CSS for syntax highlighting */
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+  { counter-reset: source-line 0; }
+pre.numberSource code > span
+  { position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+  { content: counter(source-line);
+    position: relative; left: -1em; text-align: right; vertical-align: baseline;
+    border: none; display: inline-block;
+    -webkit-touch-callout: none; -webkit-user-select: none;
+    -khtml-user-select: none; -moz-user-select: none;
+    -ms-user-select: none; user-select: none;
+    padding: 0 4px; width: 4em;
+  }
+pre.numberSource { margin-left: 3em;  padding-left: 4px; }
+div.sourceCode
+  {   }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+}
+</style>
+
+
+<script src="preprocessing_files/libs/clipboard/clipboard.min.js"></script>
+<script src="preprocessing_files/libs/quarto-html/quarto.js"></script>
+<script src="preprocessing_files/libs/quarto-html/popper.min.js"></script>
+<script src="preprocessing_files/libs/quarto-html/tippy.umd.min.js"></script>
+<script src="preprocessing_files/libs/quarto-html/anchor.min.js"></script>
+<link href="preprocessing_files/libs/quarto-html/tippy.css" rel="stylesheet">
+<link href="preprocessing_files/libs/quarto-html/quarto-syntax-highlighting.css" rel="stylesheet" id="quarto-text-highlighting-styles">
+<script src="preprocessing_files/libs/bootstrap/bootstrap.min.js"></script>
+<link href="preprocessing_files/libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
+<link href="preprocessing_files/libs/bootstrap/bootstrap.min.css" rel="stylesheet" id="quarto-bootstrap" data-mode="light">
+
+<link href="preprocessing_files/libs/table1-1.0/table1_defaults.css" rel="stylesheet">
+
+  <script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml-full.js" type="text/javascript"></script>
+
+</head>
+
+<body class="fullcontent">
+
+<div id="quarto-content" class="page-columns page-rows-contents page-layout-article">
+
+<main class="content" id="quarto-document-content">
+
+<header id="title-block-header" class="quarto-title-block default">
+<div class="quarto-title">
+<h1 class="title">Preprocessing</h1>
+</div>
+
+
+
+<div class="quarto-title-meta">
+
+    
+  
+    
+  </div>
+  
+
+</header>
+
+<section id="introduction" class="level2">
+<h2 class="anchored" data-anchor-id="introduction">Introduction</h2>
+<p>Multiple sclerosis (MS) is an autoimmune condition, where the immune system attacks myelin coat in brain and spinal cord. This leads to lack of coordination, balance, muscle spasms, vision problems, paralysis, etc. In Denmark, approximately 14,500 individuals are diagnosed with MS. It is estimated that 2.3 million people have MS worldwide. Treatments for MS seek to slow disease progression and manage symptoms, but the disease can not be cured.</p>
+<p>γδT cells producing the pro-inflammatory cytokines interleukin-17A (IL-17A) and IL-17F (γδT17) can mediate local immune responses against fungal or bacterial infections, contribute to tissue homeostasis during anti-viral responses, and regulate body thermogenesis. Moreover, γδT17 cells are involved in the pathology of local inflammatory immune diseases including inflammation in the central nervous system (CNS). Studies have shown that tissue resident γδT17 cells express mainly Vγ6 or Vγ4 TCR chains.</p>
+<p>This project aims to characterize neuropathogenic γδT cells by experimental autoimmune encephalomyelitis (EAE) - an animal model of CNS demyelinating diseases. EAE is induced in mice, and γδT cells are sorted and sequenced for 3 replicates on the day of induction (B0, naive), 11 days after EAE (B11) and 21 days after EAE (B21).</p>
+<p>For clarity, an experiment refers to B0, B11 or B21. An experiment is characterized by all cells being loaded onto the same lane for sequencing. A sample refers to cells coming from the same replicate, that is the same mouse.</p>
+</section>
+<section id="preparation" class="level2">
+<h2 class="anchored" data-anchor-id="preparation">Preparation</h2>
+<p>In the following section, the single cell data is loaded to create a Seurat object including both gene expression data and hashtag oligo data. Relevant metadata is added.</p>
+<section id="set-up" class="level3">
+<h3 class="anchored" data-anchor-id="set-up">Set Up</h3>
+<p>Relevant libraries are loaded.</p>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb1"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(Seurat)</span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(tidyverse)</span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(stringr)</span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(ggplot2)</span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(patchwork)</span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(SingleCellExperiment)</span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(scDblFinder)</span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(scater)</span>
+<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(table1)</span>
+<span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(grid)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<p>Define the path to get the data and save results. The path might have to be changed.</p>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb2"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a>data_path <span class="ot">&lt;-</span> <span class="st">"/Volumes/10x_data/10xRNA_M-EAE-gdT/data/raw_data"</span></span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a>result_path <span class="ot">&lt;-</span> <span class="st">"~/Dropbox/Special Project Single Cell/mouse/brain/results/preprocessing"</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+</section>
+<section id="data-load" class="level3">
+<h3 class="anchored" data-anchor-id="data-load">Data Load</h3>
+<p>We look at the available folders in the data folder.</p>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb3"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a>data_folders <span class="ot">&lt;-</span> <span class="fu">list.files</span>(<span class="at">path =</span> data_path)</span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>data_folders</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>[1] "10xRNA_M-EAE-gdT-B0"     "10xRNA_M-EAE-gdT-B11"   
+[3] "10xRNA_M-EAE-gdT-B21"    "10xRNA_M-EAE-gdT-LN0"   
+[5] "10xRNA-M-EAE-gdT-LN11"   "10xRNA-M-EAE-gdT-LN21"  
+[7] "10xRNA-M-EAE-gdT-NEO"    "10xRNA-M-EAE-gdT-THYMUS"</code></pre>
+</div>
+</div>
+<p>We wish to preprocess the brain data, so we grep only these files and load them.</p>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb5"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a>data_folders_brain <span class="ot">&lt;-</span> data_folders[<span class="fu">str_detect</span>(<span class="at">string =</span> data_folders,</span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a>                                        <span class="at">pattern =</span> <span class="st">"10xRNA_M-EAE-gdT-B"</span>)]</span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a>data <span class="ot">&lt;-</span> <span class="fu">Read10X</span>(<span class="at">data.dir =</span> <span class="fu">paste</span>(data_path,</span>
+<span id="cb5-5"><a href="#cb5-5" aria-hidden="true" tabindex="-1"></a>                                 data_folders_brain,</span>
+<span id="cb5-6"><a href="#cb5-6" aria-hidden="true" tabindex="-1"></a>                                 <span class="st">"filtered_feature_bc_matrix"</span>,</span>
+<span id="cb5-7"><a href="#cb5-7" aria-hidden="true" tabindex="-1"></a>                                 <span class="at">sep =</span> <span class="st">"/"</span>))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<p>The data object is a list of 2 elements: The gene counts (Gene expression) and the expression of hashtag oligonucleotide (Antibody Capture) for each cell. A Seurat object is created from the gene counts. As we only want to include cells present in both data sets, we first identify the cells in common between the two. Furthermore, we will only include genes detected in at least 3 cells.</p>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb6"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a>joined_cells <span class="ot">&lt;-</span> <span class="fu">intersect</span>(<span class="fu">colnames</span>(data<span class="sc">$</span><span class="st">`</span><span class="at">Gene Expression</span><span class="st">`</span>),</span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a>                          <span class="fu">colnames</span>(data<span class="sc">$</span><span class="st">`</span><span class="at">Antibody Capture</span><span class="st">`</span>))</span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a>seu_obj <span class="ot">&lt;-</span> <span class="fu">CreateSeuratObject</span>(<span class="at">counts =</span> data<span class="sc">$</span><span class="st">`</span><span class="at">Gene Expression</span><span class="st">`</span>[ , joined_cells],</span>
+<span id="cb6-5"><a href="#cb6-5" aria-hidden="true" tabindex="-1"></a>                              <span class="at">min.cells =</span> <span class="dv">3</span>)</span>
+<span id="cb6-6"><a href="#cb6-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-7"><a href="#cb6-7" aria-hidden="true" tabindex="-1"></a>seu_obj</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>An object of class Seurat 
+13415 features across 6198 samples within 1 assay 
+Active assay: RNA (13415 features, 0 variable features)
+ 1 layer present: counts</code></pre>
+</div>
+</div>
+<p>The data consists of in total 6198 cells expressing together 13415 genes. The sample information is given by the cell identity classes and save in the metadata as well. However, the origin of the cell is given by 1 if comming from B0, 2 if from B11 and 3 when originating from B21. We wish to use the describe the experiment by the original labels.</p>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb8"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a>seu_obj<span class="sc">@</span>meta.data<span class="sc">$</span>orig.ident <span class="ot">&lt;-</span> <span class="fu">factor</span>(seu_obj<span class="sc">@</span>meta.data<span class="sc">$</span>orig.ident,</span>
+<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a>                                       <span class="at">levels =</span> <span class="fu">as.character</span>(<span class="fu">unique</span>(seu_obj<span class="sc">@</span>meta.data<span class="sc">$</span>orig.ident)),</span>
+<span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a>                                       <span class="at">labels =</span> <span class="fu">str_extract</span>(<span class="at">string =</span> data_folders_brain,</span>
+<span id="cb8-4"><a href="#cb8-4" aria-hidden="true" tabindex="-1"></a>                                                            <span class="at">pattern =</span> <span class="st">"B</span><span class="sc">\\</span><span class="st">d+"</span>))</span>
+<span id="cb8-5"><a href="#cb8-5" aria-hidden="true" tabindex="-1"></a><span class="fu">Idents</span>(seu_obj) <span class="ot">&lt;-</span> seu_obj<span class="sc">@</span>meta.data<span class="sc">$</span>orig.ident </span>
+<span id="cb8-6"><a href="#cb8-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-7"><a href="#cb8-7" aria-hidden="true" tabindex="-1"></a><span class="fu">label</span>(seu_obj<span class="sc">@</span>meta.data<span class="sc">$</span>orig.ident) <span class="ot">&lt;-</span> <span class="st">"Experiment"</span></span>
+<span id="cb8-8"><a href="#cb8-8" aria-hidden="true" tabindex="-1"></a><span class="fu">table1</span>(<span class="at">data =</span> seu_obj<span class="sc">@</span>meta.data,</span>
+<span id="cb8-9"><a href="#cb8-9" aria-hidden="true" tabindex="-1"></a>       <span class="sc">~</span> orig.ident)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output-display">
+
+<div class="Rtable1">
+<table class="Rtable1 table table-sm table-striped small" data-quarto-postprocess="true">
+<colgroup>
+<col style="width: 50%">
+<col style="width: 50%">
+</colgroup>
+<thead>
+<tr class="header">
+<th class="rowlabel firstrow lastrow" data-quarto-table-cell-role="th"></th>
+<th class="firstrow lastrow" data-quarto-table-cell-role="th"><span class="stratlabel">Overall<br>
+<span class="stratn">(N=6198)</span></span></th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td class="rowlabel firstrow">Experiment</td>
+<td class="firstrow"></td>
+</tr>
+<tr class="even">
+<td class="rowlabel">B0</td>
+<td>458 (7.4%)</td>
+</tr>
+<tr class="odd">
+<td class="rowlabel">B11</td>
+<td>858 (13.8%)</td>
+</tr>
+<tr class="even">
+<td class="rowlabel lastrow">B21</td>
+<td class="lastrow">4882 (78.8%)</td>
+</tr>
+</tbody>
+</table>
+
+</div>
+</div>
+</div>
+<p>We see a huge difference between the number of cells coming from each of the experiments. B21 has 10 times as many cells compared to B0. Finally, we add the hashtag oligo (HTO) data to the Seurat object to identify which replicate each cell comes from within each experiment later on. As for the gene counts, we select only the data for relevant cells, that is, cells present in both the gene expression data and the HTO expression data.</p>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb9"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a>seu_obj[[<span class="st">"HTO"</span>]] <span class="ot">&lt;-</span> <span class="fu">CreateAssayObject</span>(<span class="at">counts =</span> data<span class="sc">$</span><span class="st">`</span><span class="at">Antibody Capture</span><span class="st">`</span>[ , joined_cells])</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+</section>
+<section id="quality-metrics" class="level3">
+<h3 class="anchored" data-anchor-id="quality-metrics">Quality Metrics</h3>
+<p>The percentage of mitochondrial and ribosomal content is added.</p>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb10"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Mitochondrial content</span></span>
+<span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a>seu_obj <span class="ot">&lt;-</span> <span class="fu">PercentageFeatureSet</span>(seu_obj,</span>
+<span id="cb10-3"><a href="#cb10-3" aria-hidden="true" tabindex="-1"></a>                                <span class="at">pattern =</span> <span class="st">"^mt-"</span>,</span>
+<span id="cb10-4"><a href="#cb10-4" aria-hidden="true" tabindex="-1"></a>                                <span class="at">col.name =</span> <span class="st">"percent_mt"</span>)</span>
+<span id="cb10-5"><a href="#cb10-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb10-6"><a href="#cb10-6" aria-hidden="true" tabindex="-1"></a><span class="co"># Ribosomal content</span></span>
+<span id="cb10-7"><a href="#cb10-7" aria-hidden="true" tabindex="-1"></a>seu_obj <span class="ot">&lt;-</span> <span class="fu">PercentageFeatureSet</span>(seu_obj,</span>
+<span id="cb10-8"><a href="#cb10-8" aria-hidden="true" tabindex="-1"></a>                                <span class="at">pattern =</span> <span class="st">"R[sp]l"</span>,</span>
+<span id="cb10-9"><a href="#cb10-9" aria-hidden="true" tabindex="-1"></a>                                <span class="at">col.name =</span> <span class="st">"percent_ribo"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<p>Let us take a look at what is available at this point.</p>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb11"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a><span class="fu">colnames</span>(seu_obj<span class="sc">@</span>meta.data)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>[1] "orig.ident"   "nCount_RNA"   "nFeature_RNA" "nCount_HTO"   "nFeature_HTO"
+[6] "percent_mt"   "percent_ribo"</code></pre>
+</div>
+</div>
+<p>The names are modified.</p>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb13"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a><span class="fu">colnames</span>(seu_obj<span class="sc">@</span>meta.data)[<span class="dv">1</span><span class="sc">:</span><span class="dv">3</span>] <span class="ot">&lt;-</span> <span class="fu">c</span>(<span class="st">"experiment"</span>, </span>
+<span id="cb13-2"><a href="#cb13-2" aria-hidden="true" tabindex="-1"></a>                                      <span class="st">"nCount_molecules"</span>, </span>
+<span id="cb13-3"><a href="#cb13-3" aria-hidden="true" tabindex="-1"></a>                                      <span class="st">"nCount_genes"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+</section>
+</section>
+<section id="filtering" class="level2">
+<h2 class="anchored" data-anchor-id="filtering">Filtering</h2>
+<p>The goal of filtering is to only include true cells that are of high quality based on the quality metrics generated in the previous section.</p>
+<section id="quality-control" class="level3">
+<h3 class="anchored" data-anchor-id="quality-control">Quality Control</h3>
+<p>The following code are customized plot function for quality control.</p>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb14"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Violin plot</span></span>
+<span id="cb14-2"><a href="#cb14-2" aria-hidden="true" tabindex="-1"></a>qcPlotVln <span class="ot">&lt;-</span> <span class="cf">function</span>(seu_obj, group, group_name, feature, feature_name){</span>
+<span id="cb14-3"><a href="#cb14-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">ggplot</span>(<span class="at">data =</span> seu_obj<span class="sc">@</span>meta.data,</span>
+<span id="cb14-4"><a href="#cb14-4" aria-hidden="true" tabindex="-1"></a>         <span class="at">mapping =</span> <span class="fu">aes</span>(<span class="at">x =</span> {{group}},</span>
+<span id="cb14-5"><a href="#cb14-5" aria-hidden="true" tabindex="-1"></a>                       <span class="at">y =</span> {{feature}})) <span class="sc">+</span></span>
+<span id="cb14-6"><a href="#cb14-6" aria-hidden="true" tabindex="-1"></a>    <span class="fu">geom_violin</span>(<span class="at">colour =</span> <span class="st">"#6699CC"</span>,</span>
+<span id="cb14-7"><a href="#cb14-7" aria-hidden="true" tabindex="-1"></a>                <span class="at">fill =</span> <span class="st">"#6699CC"</span>,</span>
+<span id="cb14-8"><a href="#cb14-8" aria-hidden="true" tabindex="-1"></a>                <span class="at">alpha =</span> <span class="fl">0.2</span>) <span class="sc">+</span></span>
+<span id="cb14-9"><a href="#cb14-9" aria-hidden="true" tabindex="-1"></a>    <span class="fu">geom_jitter</span>(<span class="at">size =</span> <span class="dv">1</span>,</span>
+<span id="cb14-10"><a href="#cb14-10" aria-hidden="true" tabindex="-1"></a>                <span class="at">alpha =</span> <span class="fl">0.4</span>) <span class="sc">+</span> </span>
+<span id="cb14-11"><a href="#cb14-11" aria-hidden="true" tabindex="-1"></a>    <span class="fu">scale_y_log10</span>() <span class="sc">+</span></span>
+<span id="cb14-12"><a href="#cb14-12" aria-hidden="true" tabindex="-1"></a>    <span class="fu">xlab</span>(group_name) <span class="sc">+</span> </span>
+<span id="cb14-13"><a href="#cb14-13" aria-hidden="true" tabindex="-1"></a>    <span class="fu">ylab</span>(feature_name) <span class="sc">+</span> </span>
+<span id="cb14-14"><a href="#cb14-14" aria-hidden="true" tabindex="-1"></a>    <span class="fu">theme_bw</span>()</span>
+<span id="cb14-15"><a href="#cb14-15" aria-hidden="true" tabindex="-1"></a>}</span>
+<span id="cb14-16"><a href="#cb14-16" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb14-17"><a href="#cb14-17" aria-hidden="true" tabindex="-1"></a><span class="co"># Density plot</span></span>
+<span id="cb14-18"><a href="#cb14-18" aria-hidden="true" tabindex="-1"></a>qcPlotDens <span class="ot">&lt;-</span> <span class="cf">function</span>(seu_obj, group, group_name, feature, feature_name){</span>
+<span id="cb14-19"><a href="#cb14-19" aria-hidden="true" tabindex="-1"></a>  <span class="fu">ggplot</span>(<span class="at">data =</span> seu_obj<span class="sc">@</span>meta.data,</span>
+<span id="cb14-20"><a href="#cb14-20" aria-hidden="true" tabindex="-1"></a>         <span class="at">mapping =</span> <span class="fu">aes</span>(<span class="at">x =</span> {{feature}},</span>
+<span id="cb14-21"><a href="#cb14-21" aria-hidden="true" tabindex="-1"></a>                       <span class="at">fill =</span> {{group}})) <span class="sc">+</span></span>
+<span id="cb14-22"><a href="#cb14-22" aria-hidden="true" tabindex="-1"></a>    <span class="fu">geom_density</span>(<span class="at">alpha =</span> <span class="fl">0.2</span>) <span class="sc">+</span></span>
+<span id="cb14-23"><a href="#cb14-23" aria-hidden="true" tabindex="-1"></a>    <span class="fu">scale_x_log10</span>() <span class="sc">+</span></span>
+<span id="cb14-24"><a href="#cb14-24" aria-hidden="true" tabindex="-1"></a>    <span class="fu">xlab</span>(feature_name) <span class="sc">+</span> </span>
+<span id="cb14-25"><a href="#cb14-25" aria-hidden="true" tabindex="-1"></a>    <span class="fu">ylab</span>(<span class="st">"Density"</span>) <span class="sc">+</span> </span>
+<span id="cb14-26"><a href="#cb14-26" aria-hidden="true" tabindex="-1"></a>    <span class="fu">theme_bw</span>() <span class="sc">+</span></span>
+<span id="cb14-27"><a href="#cb14-27" aria-hidden="true" tabindex="-1"></a>    <span class="fu">labs</span>(<span class="at">fill =</span> group_name)</span>
+<span id="cb14-28"><a href="#cb14-28" aria-hidden="true" tabindex="-1"></a>}</span>
+<span id="cb14-29"><a href="#cb14-29" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb14-30"><a href="#cb14-30" aria-hidden="true" tabindex="-1"></a><span class="co"># Scatter plot</span></span>
+<span id="cb14-31"><a href="#cb14-31" aria-hidden="true" tabindex="-1"></a>qcPlotScatter <span class="ot">&lt;-</span> <span class="cf">function</span>(seu_obj, feature1, feature2, feature_name){</span>
+<span id="cb14-32"><a href="#cb14-32" aria-hidden="true" tabindex="-1"></a>  <span class="fu">ggplot</span>(<span class="at">data =</span> seu_obj<span class="sc">@</span>meta.data,</span>
+<span id="cb14-33"><a href="#cb14-33" aria-hidden="true" tabindex="-1"></a>         <span class="at">mapping =</span> <span class="fu">aes</span>(<span class="at">x =</span> {{feature1}},</span>
+<span id="cb14-34"><a href="#cb14-34" aria-hidden="true" tabindex="-1"></a>                       <span class="at">y =</span> {{feature2}})) <span class="sc">+</span></span>
+<span id="cb14-35"><a href="#cb14-35" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_point</span>(<span class="at">colour =</span> <span class="st">"#6699CC"</span>,</span>
+<span id="cb14-36"><a href="#cb14-36" aria-hidden="true" tabindex="-1"></a>             <span class="at">fill =</span> <span class="st">"#6699CC"</span>,</span>
+<span id="cb14-37"><a href="#cb14-37" aria-hidden="true" tabindex="-1"></a>             <span class="at">alpha =</span> <span class="fl">0.5</span>) <span class="sc">+</span></span>
+<span id="cb14-38"><a href="#cb14-38" aria-hidden="true" tabindex="-1"></a>  <span class="fu">xlab</span>(feature_name[<span class="dv">1</span>]) <span class="sc">+</span> </span>
+<span id="cb14-39"><a href="#cb14-39" aria-hidden="true" tabindex="-1"></a>  <span class="fu">ylab</span>(feature_name[<span class="dv">2</span>]) <span class="sc">+</span></span>
+<span id="cb14-40"><a href="#cb14-40" aria-hidden="true" tabindex="-1"></a>  <span class="fu">theme_bw</span>()</span>
+<span id="cb14-41"><a href="#cb14-41" aria-hidden="true" tabindex="-1"></a>}</span>
+<span id="cb14-42"><a href="#cb14-42" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb14-43"><a href="#cb14-43" aria-hidden="true" tabindex="-1"></a><span class="co"># Experiment labels.</span></span>
+<span id="cb14-44"><a href="#cb14-44" aria-hidden="true" tabindex="-1"></a>exp_label <span class="ot">&lt;-</span> <span class="fu">names</span>(<span class="fu">table</span>(seu_obj<span class="sc">@</span>meta.data<span class="sc">$</span>experiment))</span>
+<span id="cb14-45"><a href="#cb14-45" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb14-46"><a href="#cb14-46" aria-hidden="true" tabindex="-1"></a><span class="co"># Number of experiments/lanes.</span></span>
+<span id="cb14-47"><a href="#cb14-47" aria-hidden="true" tabindex="-1"></a>exp_numb <span class="ot">&lt;-</span> <span class="fu">length</span>(exp_label)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<p>We inspect the distribution for different variables in the metadata to decide the filtering thresholds. First, let’s take a look at the distribution of molecules across experiments.</p>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb15"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true" tabindex="-1"></a>thres_molecules <span class="ot">&lt;-</span> <span class="fu">data.frame</span>(<span class="at">group =</span> <span class="fu">factor</span>(exp_label),</span>
+<span id="cb15-2"><a href="#cb15-2" aria-hidden="true" tabindex="-1"></a>                              <span class="at">threshold_down =</span> <span class="fu">c</span>(<span class="dv">1000</span>, <span class="dv">1000</span>, <span class="dv">100</span>),</span>
+<span id="cb15-3"><a href="#cb15-3" aria-hidden="true" tabindex="-1"></a>                              <span class="at">threshold_up =</span> <span class="fu">c</span>(<span class="dv">10000</span>, <span class="dv">10000</span>, <span class="dv">1000</span>))</span>
+<span id="cb15-4"><a href="#cb15-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb15-5"><a href="#cb15-5" aria-hidden="true" tabindex="-1"></a><span class="fu">qcPlotVln</span>(seu_obj,</span>
+<span id="cb15-6"><a href="#cb15-6" aria-hidden="true" tabindex="-1"></a>          experiment,</span>
+<span id="cb15-7"><a href="#cb15-7" aria-hidden="true" tabindex="-1"></a>          <span class="st">"Experiment"</span>,</span>
+<span id="cb15-8"><a href="#cb15-8" aria-hidden="true" tabindex="-1"></a>          nCount_molecules,</span>
+<span id="cb15-9"><a href="#cb15-9" aria-hidden="true" tabindex="-1"></a>          <span class="st">"Number of molecules"</span>) <span class="sc">+</span></span>
+<span id="cb15-10"><a href="#cb15-10" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_boxplot</span>(<span class="at">data =</span> thres_molecules,</span>
+<span id="cb15-11"><a href="#cb15-11" aria-hidden="true" tabindex="-1"></a>               <span class="at">mapping =</span> <span class="fu">aes</span>(<span class="at">x =</span> group,</span>
+<span id="cb15-12"><a href="#cb15-12" aria-hidden="true" tabindex="-1"></a>                             <span class="at">y =</span> threshold_up),</span>
+<span id="cb15-13"><a href="#cb15-13" aria-hidden="true" tabindex="-1"></a>               <span class="at">color =</span> <span class="st">"#CC3333"</span>) <span class="sc">+</span></span>
+<span id="cb15-14"><a href="#cb15-14" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_boxplot</span>(<span class="at">data =</span> thres_molecules,</span>
+<span id="cb15-15"><a href="#cb15-15" aria-hidden="true" tabindex="-1"></a>               <span class="at">mapping =</span> <span class="fu">aes</span>(<span class="at">x =</span> group,</span>
+<span id="cb15-16"><a href="#cb15-16" aria-hidden="true" tabindex="-1"></a>                             <span class="at">y =</span> threshold_down),</span>
+<span id="cb15-17"><a href="#cb15-17" aria-hidden="true" tabindex="-1"></a>               <span class="at">color =</span> <span class="st">"#CC3333"</span>) <span class="sc">+</span></span>
+<span id="cb15-18"><a href="#cb15-18" aria-hidden="true" tabindex="-1"></a>  <span class="fu">theme</span>(<span class="at">legend.position =</span> <span class="st">"None"</span>) <span class="sc">+</span></span>
+<span id="cb15-19"><a href="#cb15-19" aria-hidden="true" tabindex="-1"></a>  <span class="fu">labs</span>(<span class="at">title =</span> <span class="st">"Distribution of The Number of Molecules Across Experiments"</span>,</span>
+<span id="cb15-20"><a href="#cb15-20" aria-hidden="true" tabindex="-1"></a>       <span class="at">caption =</span> <span class="st">"Red lines indicates filtering threshold."</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output-display">
+<p><img src="preprocessing_files/figure-html/unnamed-chunk-12-1.png" class="img-fluid" width="672"></p>
+</div>
+<div class="sourceCode cell-code" id="cb16"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb16-1"><a href="#cb16-1" aria-hidden="true" tabindex="-1"></a><span class="fu">ggsave</span>(<span class="at">filename =</span> <span class="st">"vlnEXP_molecules.png"</span>,</span>
+<span id="cb16-2"><a href="#cb16-2" aria-hidden="true" tabindex="-1"></a>       <span class="at">path =</span> result_path,</span>
+<span id="cb16-3"><a href="#cb16-3" aria-hidden="true" tabindex="-1"></a>       <span class="at">width =</span> <span class="dv">6</span>,</span>
+<span id="cb16-4"><a href="#cb16-4" aria-hidden="true" tabindex="-1"></a>       <span class="at">height =</span> <span class="dv">4</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb17"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb17-1"><a href="#cb17-1" aria-hidden="true" tabindex="-1"></a><span class="fu">qcPlotDens</span>(seu_obj,</span>
+<span id="cb17-2"><a href="#cb17-2" aria-hidden="true" tabindex="-1"></a>           experiment,</span>
+<span id="cb17-3"><a href="#cb17-3" aria-hidden="true" tabindex="-1"></a>           <span class="st">"Experiment"</span>,</span>
+<span id="cb17-4"><a href="#cb17-4" aria-hidden="true" tabindex="-1"></a>           nCount_molecules,</span>
+<span id="cb17-5"><a href="#cb17-5" aria-hidden="true" tabindex="-1"></a>           <span class="st">"Number of molecules"</span>) <span class="sc">+</span></span>
+<span id="cb17-6"><a href="#cb17-6" aria-hidden="true" tabindex="-1"></a>  <span class="fu">labs</span>(<span class="at">title =</span> <span class="st">"Distribution of The Number of Molecules Across Experiments"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output-display">
+<p><img src="preprocessing_files/figure-html/unnamed-chunk-13-1.png" class="img-fluid" width="672"></p>
+</div>
+<div class="sourceCode cell-code" id="cb18"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb18-1"><a href="#cb18-1" aria-hidden="true" tabindex="-1"></a><span class="fu">ggsave</span>(<span class="at">filename =</span> <span class="st">"densEXP_molecules.png"</span>,</span>
+<span id="cb18-2"><a href="#cb18-2" aria-hidden="true" tabindex="-1"></a>       <span class="at">path =</span> result_path,</span>
+<span id="cb18-3"><a href="#cb18-3" aria-hidden="true" tabindex="-1"></a>       <span class="at">width =</span> <span class="dv">7</span>,</span>
+<span id="cb18-4"><a href="#cb18-4" aria-hidden="true" tabindex="-1"></a>       <span class="at">height =</span> <span class="dv">4</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<p>There is a huge difference between the experiments when it comes to the distribution of the total number of molecules pr. cell. Let us take a look on the distribution for the number of genes.</p>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb19"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb19-1"><a href="#cb19-1" aria-hidden="true" tabindex="-1"></a>thres_genes <span class="ot">&lt;-</span> <span class="fu">data.frame</span>(<span class="at">group =</span> <span class="fu">factor</span>(exp_label),</span>
+<span id="cb19-2"><a href="#cb19-2" aria-hidden="true" tabindex="-1"></a>                          <span class="at">threshold_down =</span> <span class="fu">c</span>(<span class="cn">NA</span>, <span class="cn">NA</span>, <span class="dv">100</span>),</span>
+<span id="cb19-3"><a href="#cb19-3" aria-hidden="true" tabindex="-1"></a>                          <span class="at">threshold_up =</span> <span class="fu">c</span>(<span class="dv">3000</span>, <span class="dv">3000</span>, <span class="cn">NA</span>))</span>
+<span id="cb19-4"><a href="#cb19-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb19-5"><a href="#cb19-5" aria-hidden="true" tabindex="-1"></a><span class="fu">qcPlotVln</span>(seu_obj,</span>
+<span id="cb19-6"><a href="#cb19-6" aria-hidden="true" tabindex="-1"></a>          experiment,</span>
+<span id="cb19-7"><a href="#cb19-7" aria-hidden="true" tabindex="-1"></a>          <span class="st">"Experiment"</span>,</span>
+<span id="cb19-8"><a href="#cb19-8" aria-hidden="true" tabindex="-1"></a>          nCount_genes,</span>
+<span id="cb19-9"><a href="#cb19-9" aria-hidden="true" tabindex="-1"></a>          <span class="st">"Number of genes"</span>) <span class="sc">+</span></span>
+<span id="cb19-10"><a href="#cb19-10" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_boxplot</span>(<span class="at">data =</span> thres_genes,</span>
+<span id="cb19-11"><a href="#cb19-11" aria-hidden="true" tabindex="-1"></a>               <span class="at">mapping =</span> <span class="fu">aes</span>(<span class="at">x =</span> group,</span>
+<span id="cb19-12"><a href="#cb19-12" aria-hidden="true" tabindex="-1"></a>                             <span class="at">y =</span> threshold_up),</span>
+<span id="cb19-13"><a href="#cb19-13" aria-hidden="true" tabindex="-1"></a>               <span class="at">color =</span> <span class="st">"#CC3333"</span>) <span class="sc">+</span></span>
+<span id="cb19-14"><a href="#cb19-14" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_boxplot</span>(<span class="at">data =</span> thres_genes,</span>
+<span id="cb19-15"><a href="#cb19-15" aria-hidden="true" tabindex="-1"></a>               <span class="at">mapping =</span> <span class="fu">aes</span>(<span class="at">x =</span> group,</span>
+<span id="cb19-16"><a href="#cb19-16" aria-hidden="true" tabindex="-1"></a>                             <span class="at">y =</span> threshold_down),</span>
+<span id="cb19-17"><a href="#cb19-17" aria-hidden="true" tabindex="-1"></a>               <span class="at">color =</span> <span class="st">"#CC3333"</span>) <span class="sc">+</span></span>
+<span id="cb19-18"><a href="#cb19-18" aria-hidden="true" tabindex="-1"></a>  <span class="fu">theme</span>(<span class="at">legend.position =</span> <span class="st">"None"</span>) <span class="sc">+</span></span>
+<span id="cb19-19"><a href="#cb19-19" aria-hidden="true" tabindex="-1"></a>  <span class="fu">labs</span>(<span class="at">title =</span> <span class="st">"Distribution of The Number of Genes Across Experiments"</span>,</span>
+<span id="cb19-20"><a href="#cb19-20" aria-hidden="true" tabindex="-1"></a>       <span class="at">caption =</span> <span class="st">"Red lines indicates filtering threshold."</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output-display">
+<p><img src="preprocessing_files/figure-html/unnamed-chunk-14-1.png" class="img-fluid" width="672"></p>
+</div>
+<div class="sourceCode cell-code" id="cb20"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb20-1"><a href="#cb20-1" aria-hidden="true" tabindex="-1"></a><span class="fu">ggsave</span>(<span class="at">filename =</span> <span class="st">"vlnEXP_genes.png"</span>,</span>
+<span id="cb20-2"><a href="#cb20-2" aria-hidden="true" tabindex="-1"></a>       <span class="at">path =</span> result_path,</span>
+<span id="cb20-3"><a href="#cb20-3" aria-hidden="true" tabindex="-1"></a>       <span class="at">width =</span> <span class="dv">6</span>,</span>
+<span id="cb20-4"><a href="#cb20-4" aria-hidden="true" tabindex="-1"></a>       <span class="at">height =</span> <span class="dv">4</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb21"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb21-1"><a href="#cb21-1" aria-hidden="true" tabindex="-1"></a><span class="fu">qcPlotDens</span>(seu_obj,</span>
+<span id="cb21-2"><a href="#cb21-2" aria-hidden="true" tabindex="-1"></a>           experiment,</span>
+<span id="cb21-3"><a href="#cb21-3" aria-hidden="true" tabindex="-1"></a>           <span class="st">"Experiment"</span>,</span>
+<span id="cb21-4"><a href="#cb21-4" aria-hidden="true" tabindex="-1"></a>           nCount_genes,</span>
+<span id="cb21-5"><a href="#cb21-5" aria-hidden="true" tabindex="-1"></a>           <span class="st">"Number of genes"</span>) <span class="sc">+</span></span>
+<span id="cb21-6"><a href="#cb21-6" aria-hidden="true" tabindex="-1"></a>  <span class="fu">labs</span>(<span class="at">title =</span> <span class="st">"Distribution of The Number of Genes Across Experiments"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output-display">
+<p><img src="preprocessing_files/figure-html/unnamed-chunk-15-1.png" class="img-fluid" width="672"></p>
+</div>
+<div class="sourceCode cell-code" id="cb22"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb22-1"><a href="#cb22-1" aria-hidden="true" tabindex="-1"></a><span class="fu">ggsave</span>(<span class="at">filename =</span> <span class="st">"densEXP_genes.png"</span>,</span>
+<span id="cb22-2"><a href="#cb22-2" aria-hidden="true" tabindex="-1"></a>       <span class="at">path =</span> result_path,</span>
+<span id="cb22-3"><a href="#cb22-3" aria-hidden="true" tabindex="-1"></a>       <span class="at">width =</span> <span class="dv">7</span>,</span>
+<span id="cb22-4"><a href="#cb22-4" aria-hidden="true" tabindex="-1"></a>       <span class="at">height =</span> <span class="dv">4</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<p>We take a look at the number of RNA molecules pr. cell vs.&nbsp;the number of genes.</p>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb23"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb23-1"><a href="#cb23-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Create list to store plots. </span></span>
+<span id="cb23-2"><a href="#cb23-2" aria-hidden="true" tabindex="-1"></a>list_scatter <span class="ot">&lt;-</span> <span class="fu">list</span>()</span>
+<span id="cb23-3"><a href="#cb23-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb23-4"><a href="#cb23-4" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> (i <span class="cf">in</span> <span class="dv">1</span><span class="sc">:</span>exp_numb){</span>
+<span id="cb23-5"><a href="#cb23-5" aria-hidden="true" tabindex="-1"></a>  list_scatter[[i]] <span class="ot">&lt;-</span> <span class="fu">qcPlotScatter</span>(<span class="fu">subset</span>(seu_obj,</span>
+<span id="cb23-6"><a href="#cb23-6" aria-hidden="true" tabindex="-1"></a>                                            experiment <span class="sc">==</span> exp_label[i]),</span>
+<span id="cb23-7"><a href="#cb23-7" aria-hidden="true" tabindex="-1"></a>                                     nCount_molecules,</span>
+<span id="cb23-8"><a href="#cb23-8" aria-hidden="true" tabindex="-1"></a>                                     nCount_genes,</span>
+<span id="cb23-9"><a href="#cb23-9" aria-hidden="true" tabindex="-1"></a>                                     <span class="fu">c</span>(<span class="st">"Number of molecules"</span>, <span class="st">"Number of genes"</span>)) <span class="sc">+</span></span>
+<span id="cb23-10"><a href="#cb23-10" aria-hidden="true" tabindex="-1"></a>    <span class="fu">geom_vline</span>(<span class="at">xintercept =</span> <span class="fu">c</span>(thres_molecules[i, ]<span class="sc">$</span>threshold_down,</span>
+<span id="cb23-11"><a href="#cb23-11" aria-hidden="true" tabindex="-1"></a>                              thres_molecules[i, ]<span class="sc">$</span>threshold_up),</span>
+<span id="cb23-12"><a href="#cb23-12" aria-hidden="true" tabindex="-1"></a>               <span class="at">colour =</span> <span class="st">"#CC3333"</span>) <span class="sc">+</span></span>
+<span id="cb23-13"><a href="#cb23-13" aria-hidden="true" tabindex="-1"></a>    <span class="fu">geom_hline</span>(<span class="at">yintercept =</span> <span class="fu">c</span>(thres_genes[i, ]<span class="sc">$</span>threshold_down,</span>
+<span id="cb23-14"><a href="#cb23-14" aria-hidden="true" tabindex="-1"></a>                              thres_genes[i, ]<span class="sc">$</span>threshold_up),</span>
+<span id="cb23-15"><a href="#cb23-15" aria-hidden="true" tabindex="-1"></a>               <span class="at">colour =</span> <span class="st">"#CC3333"</span>) <span class="sc">+</span></span>
+<span id="cb23-16"><a href="#cb23-16" aria-hidden="true" tabindex="-1"></a>    <span class="fu">labs</span>(<span class="at">title =</span> exp_label[i])</span>
+<span id="cb23-17"><a href="#cb23-17" aria-hidden="true" tabindex="-1"></a>}</span>
+<span id="cb23-18"><a href="#cb23-18" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb23-19"><a href="#cb23-19" aria-hidden="true" tabindex="-1"></a><span class="co"># Combine the plots.</span></span>
+<span id="cb23-20"><a href="#cb23-20" aria-hidden="true" tabindex="-1"></a>list_scatter[[<span class="dv">1</span>]] <span class="sc">|</span> list_scatter[[<span class="dv">2</span>]] <span class="sc">|</span> list_scatter[[<span class="dv">3</span>]]</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output-display">
+<p><img src="preprocessing_files/figure-html/unnamed-chunk-16-1.png" class="img-fluid" width="672"></p>
+</div>
+<div class="sourceCode cell-code" id="cb24"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb24-1"><a href="#cb24-1" aria-hidden="true" tabindex="-1"></a><span class="fu">ggsave</span>(<span class="at">filename =</span> <span class="st">"scatterEXP.png"</span>,</span>
+<span id="cb24-2"><a href="#cb24-2" aria-hidden="true" tabindex="-1"></a>       <span class="at">path =</span> result_path,</span>
+<span id="cb24-3"><a href="#cb24-3" aria-hidden="true" tabindex="-1"></a>       <span class="at">width =</span> <span class="dv">18</span>,</span>
+<span id="cb24-4"><a href="#cb24-4" aria-hidden="true" tabindex="-1"></a>       <span class="at">height =</span> <span class="dv">6</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<p>The number of molecules vs.&nbsp;genes seems to be nicely correlated. Data points in the bottom right corner would indicate low quality cells, where the same genes are being sequenced over and over again. Cells in the top left corner could be doublets resulting in a large number of detected genes.</p>
+<p>Experiment B21 is characterized by cells having a low number of total RNA molecules being sequenced. Also very few genes are being expressed indicating that these cells might be exhausted (and potentially dying) cells. A high mitochondrial content would indicate dying cells, but surprisingly the percentage of mitochondrial content does not differ between experiments as seen below.</p>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb25"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb25-1"><a href="#cb25-1" aria-hidden="true" tabindex="-1"></a>thres_mito <span class="ot">&lt;-</span> <span class="fu">data.frame</span>(<span class="at">group =</span> <span class="fu">factor</span>(exp_label),</span>
+<span id="cb25-2"><a href="#cb25-2" aria-hidden="true" tabindex="-1"></a>                          <span class="at">threshold_down =</span> <span class="fu">c</span>(<span class="cn">NA</span>, <span class="cn">NA</span>, <span class="cn">NA</span>),</span>
+<span id="cb25-3"><a href="#cb25-3" aria-hidden="true" tabindex="-1"></a>                          <span class="at">threshold_up =</span> <span class="fu">c</span>(<span class="dv">4</span>, <span class="dv">4</span>, <span class="dv">4</span>))</span>
+<span id="cb25-4"><a href="#cb25-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb25-5"><a href="#cb25-5" aria-hidden="true" tabindex="-1"></a><span class="fu">qcPlotVln</span>(seu_obj,</span>
+<span id="cb25-6"><a href="#cb25-6" aria-hidden="true" tabindex="-1"></a>          experiment,</span>
+<span id="cb25-7"><a href="#cb25-7" aria-hidden="true" tabindex="-1"></a>          <span class="st">"Experiment"</span>,</span>
+<span id="cb25-8"><a href="#cb25-8" aria-hidden="true" tabindex="-1"></a>          percent_mt,</span>
+<span id="cb25-9"><a href="#cb25-9" aria-hidden="true" tabindex="-1"></a>          <span class="st">"Mitochondrial content (%)"</span>) <span class="sc">+</span></span>
+<span id="cb25-10"><a href="#cb25-10" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_boxplot</span>(<span class="at">data =</span> thres_mito,</span>
+<span id="cb25-11"><a href="#cb25-11" aria-hidden="true" tabindex="-1"></a>               <span class="at">mapping =</span> <span class="fu">aes</span>(<span class="at">x =</span> group,</span>
+<span id="cb25-12"><a href="#cb25-12" aria-hidden="true" tabindex="-1"></a>                             <span class="at">y =</span> threshold_up),</span>
+<span id="cb25-13"><a href="#cb25-13" aria-hidden="true" tabindex="-1"></a>               <span class="at">color =</span> <span class="st">"#CC3333"</span>) <span class="sc">+</span></span>
+<span id="cb25-14"><a href="#cb25-14" aria-hidden="true" tabindex="-1"></a>  <span class="fu">scale_y_continuous</span>() <span class="sc">+</span></span>
+<span id="cb25-15"><a href="#cb25-15" aria-hidden="true" tabindex="-1"></a>  <span class="fu">theme</span>(<span class="at">legend.position =</span> <span class="st">"None"</span>) <span class="sc">+</span></span>
+<span id="cb25-16"><a href="#cb25-16" aria-hidden="true" tabindex="-1"></a>  <span class="fu">labs</span>(<span class="at">title =</span> <span class="st">"Distribution of The Mitochondrial Content Across Experiments"</span>,</span>
+<span id="cb25-17"><a href="#cb25-17" aria-hidden="true" tabindex="-1"></a>       <span class="at">caption =</span> <span class="st">"Red lines indicates filtering threshold."</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output-display">
+<p><img src="preprocessing_files/figure-html/unnamed-chunk-17-1.png" class="img-fluid" width="672"></p>
+</div>
+<div class="sourceCode cell-code" id="cb26"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb26-1"><a href="#cb26-1" aria-hidden="true" tabindex="-1"></a><span class="fu">ggsave</span>(<span class="at">filename =</span> <span class="st">"vlnEXP_mito.png"</span>,</span>
+<span id="cb26-2"><a href="#cb26-2" aria-hidden="true" tabindex="-1"></a>       <span class="at">path =</span> result_path,</span>
+<span id="cb26-3"><a href="#cb26-3" aria-hidden="true" tabindex="-1"></a>       <span class="at">width =</span> <span class="dv">6</span>,</span>
+<span id="cb26-4"><a href="#cb26-4" aria-hidden="true" tabindex="-1"></a>       <span class="at">height =</span> <span class="dv">4</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<p>We will only keep cells with less that 4% mitochondrial content. Finally, we investigate how large a percentage of the genes are ribosomal genes.</p>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb27"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb27-1"><a href="#cb27-1" aria-hidden="true" tabindex="-1"></a><span class="fu">qcPlotVln</span>(seu_obj,</span>
+<span id="cb27-2"><a href="#cb27-2" aria-hidden="true" tabindex="-1"></a>          experiment,</span>
+<span id="cb27-3"><a href="#cb27-3" aria-hidden="true" tabindex="-1"></a>          <span class="st">"Experiment"</span>,</span>
+<span id="cb27-4"><a href="#cb27-4" aria-hidden="true" tabindex="-1"></a>          percent_ribo,</span>
+<span id="cb27-5"><a href="#cb27-5" aria-hidden="true" tabindex="-1"></a>          <span class="st">"Ribosomal content (%)"</span>) <span class="sc">+</span></span>
+<span id="cb27-6"><a href="#cb27-6" aria-hidden="true" tabindex="-1"></a>  <span class="fu">scale_y_continuous</span>() <span class="sc">+</span></span>
+<span id="cb27-7"><a href="#cb27-7" aria-hidden="true" tabindex="-1"></a>  <span class="fu">theme</span>(<span class="at">legend.position =</span> <span class="st">"None"</span>) <span class="sc">+</span></span>
+<span id="cb27-8"><a href="#cb27-8" aria-hidden="true" tabindex="-1"></a>  <span class="fu">labs</span>(<span class="at">title =</span> <span class="st">"Distribution of The Ribosomal Content Across Experiments"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output-display">
+<p><img src="preprocessing_files/figure-html/unnamed-chunk-18-1.png" class="img-fluid" width="672"></p>
+</div>
+<div class="sourceCode cell-code" id="cb28"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb28-1"><a href="#cb28-1" aria-hidden="true" tabindex="-1"></a><span class="fu">ggsave</span>(<span class="at">filename =</span> <span class="st">"vlnEXP_ribo.png"</span>,</span>
+<span id="cb28-2"><a href="#cb28-2" aria-hidden="true" tabindex="-1"></a>       <span class="at">path =</span> result_path,</span>
+<span id="cb28-3"><a href="#cb28-3" aria-hidden="true" tabindex="-1"></a>       <span class="at">width =</span> <span class="dv">6</span>,</span>
+<span id="cb28-4"><a href="#cb28-4" aria-hidden="true" tabindex="-1"></a>       <span class="at">height =</span> <span class="dv">4</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<p>We filter the cells based on the chosen thresholds for QC. We also remove all ribosomal genes.</p>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb29"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb29-1"><a href="#cb29-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Overwrite NA values in gene number threshold data frame. </span></span>
+<span id="cb29-2"><a href="#cb29-2" aria-hidden="true" tabindex="-1"></a>thres_genes<span class="sc">$</span>threshold_down[<span class="fu">is.na</span>(thres_genes<span class="sc">$</span>threshold_down)] <span class="ot">&lt;-</span> <span class="dv">0</span></span>
+<span id="cb29-3"><a href="#cb29-3" aria-hidden="true" tabindex="-1"></a>thres_genes<span class="sc">$</span>threshold_up[<span class="fu">is.na</span>(thres_genes<span class="sc">$</span>threshold_up)] <span class="ot">&lt;-</span> <span class="cn">Inf</span></span>
+<span id="cb29-4"><a href="#cb29-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb29-5"><a href="#cb29-5" aria-hidden="true" tabindex="-1"></a><span class="co"># Create list to collect Seurat objects for each experiment.</span></span>
+<span id="cb29-6"><a href="#cb29-6" aria-hidden="true" tabindex="-1"></a>list_seu_obj <span class="ot">&lt;-</span> <span class="fu">list</span>()</span>
+<span id="cb29-7"><a href="#cb29-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb29-8"><a href="#cb29-8" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> (i <span class="cf">in</span> <span class="dv">1</span><span class="sc">:</span>exp_numb){</span>
+<span id="cb29-9"><a href="#cb29-9" aria-hidden="true" tabindex="-1"></a>  <span class="co"># Get the cells from the experiment.</span></span>
+<span id="cb29-10"><a href="#cb29-10" aria-hidden="true" tabindex="-1"></a>  exp_seu_obj <span class="ot">&lt;-</span> <span class="fu">subset</span>(seu_obj,</span>
+<span id="cb29-11"><a href="#cb29-11" aria-hidden="true" tabindex="-1"></a>                        experiment <span class="sc">==</span> exp_label[i])</span>
+<span id="cb29-12"><a href="#cb29-12" aria-hidden="true" tabindex="-1"></a>  </span>
+<span id="cb29-13"><a href="#cb29-13" aria-hidden="true" tabindex="-1"></a>  exp_seu_obj <span class="ot">&lt;-</span> <span class="fu">subset</span>(exp_seu_obj,</span>
+<span id="cb29-14"><a href="#cb29-14" aria-hidden="true" tabindex="-1"></a>                        <span class="at">subset =</span> nCount_molecules <span class="sc">&gt;</span> thres_molecules<span class="sc">$</span>threshold_down[i] <span class="sc">&amp;</span> nCount_molecules <span class="sc">&lt;</span> thres_molecules<span class="sc">$</span>threshold_up[i] <span class="sc">&amp;</span> nCount_genes <span class="sc">&gt;</span>  thres_genes<span class="sc">$</span>threshold_down[i] <span class="sc">&amp;</span> nCount_genes <span class="sc">&lt;</span> thres_genes<span class="sc">$</span>threshold_up[i] <span class="sc">&amp;</span> percent_mt <span class="sc">&lt;</span> thres_mito<span class="sc">$</span>threshold_up[i])</span>
+<span id="cb29-15"><a href="#cb29-15" aria-hidden="true" tabindex="-1"></a>  </span>
+<span id="cb29-16"><a href="#cb29-16" aria-hidden="true" tabindex="-1"></a>  <span class="co"># Save the results.</span></span>
+<span id="cb29-17"><a href="#cb29-17" aria-hidden="true" tabindex="-1"></a>  list_seu_obj[i] <span class="ot">&lt;-</span> exp_seu_obj</span>
+<span id="cb29-18"><a href="#cb29-18" aria-hidden="true" tabindex="-1"></a>}</span>
+<span id="cb29-19"><a href="#cb29-19" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb29-20"><a href="#cb29-20" aria-hidden="true" tabindex="-1"></a><span class="co"># Merge the Seurat objects created for each experiment. </span></span>
+<span id="cb29-21"><a href="#cb29-21" aria-hidden="true" tabindex="-1"></a>seu_obj_filtered <span class="ot">&lt;-</span> <span class="fu">merge</span>(<span class="fu">unlist</span>(list_seu_obj)[[<span class="dv">1</span>]],</span>
+<span id="cb29-22"><a href="#cb29-22" aria-hidden="true" tabindex="-1"></a>                          <span class="at">y =</span> <span class="fu">unlist</span>(list_seu_obj)[<span class="dv">2</span><span class="sc">:</span>exp_numb])</span>
+<span id="cb29-23"><a href="#cb29-23" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb29-24"><a href="#cb29-24" aria-hidden="true" tabindex="-1"></a><span class="co"># Join layers.</span></span>
+<span id="cb29-25"><a href="#cb29-25" aria-hidden="true" tabindex="-1"></a>seu_obj_filtered[[<span class="st">"RNA"</span>]] <span class="ot">&lt;-</span> <span class="fu">JoinLayers</span>(seu_obj_filtered[[<span class="st">"RNA"</span>]])</span>
+<span id="cb29-26"><a href="#cb29-26" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb29-27"><a href="#cb29-27" aria-hidden="true" tabindex="-1"></a><span class="co"># Remove ribosomal genes.</span></span>
+<span id="cb29-28"><a href="#cb29-28" aria-hidden="true" tabindex="-1"></a>seu_obj_filtered <span class="ot">&lt;-</span> seu_obj_filtered[<span class="sc">!</span><span class="fu">grepl</span>(<span class="st">"R[sp]l"</span>, <span class="fu">rownames</span>(seu_obj_filtered)), ]</span>
+<span id="cb29-29"><a href="#cb29-29" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb29-30"><a href="#cb29-30" aria-hidden="true" tabindex="-1"></a><span class="co"># Add HTO data.</span></span>
+<span id="cb29-31"><a href="#cb29-31" aria-hidden="true" tabindex="-1"></a>seu_obj_filtered[[<span class="st">"HTO"</span>]] <span class="ot">&lt;-</span> <span class="fu">CreateAssayObject</span>(<span class="at">counts =</span> seu_obj<span class="sc">@</span>assays<span class="sc">$</span>HTO<span class="sc">$</span>data[, <span class="fu">colnames</span>(seu_obj_filtered)])</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<p>Lets us see how many cells were removed.</p>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb30"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb30-1"><a href="#cb30-1" aria-hidden="true" tabindex="-1"></a>filtering_numb <span class="ot">&lt;-</span> <span class="fu">tibble</span>(<span class="at">experiment =</span> exp_label,</span>
+<span id="cb30-2"><a href="#cb30-2" aria-hidden="true" tabindex="-1"></a>                         <span class="at">n_old =</span> <span class="fu">table</span>(seu_obj<span class="sc">@</span>meta.data<span class="sc">$</span>experiment),</span>
+<span id="cb30-3"><a href="#cb30-3" aria-hidden="true" tabindex="-1"></a>                         <span class="at">n_new =</span> <span class="fu">table</span>(seu_obj_filtered<span class="sc">@</span>meta.data<span class="sc">$</span>experiment)) <span class="sc">%&gt;%</span></span>
+<span id="cb30-4"><a href="#cb30-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">mutate</span>(<span class="at">n_removed =</span> n_old <span class="sc">-</span> n_new,</span>
+<span id="cb30-5"><a href="#cb30-5" aria-hidden="true" tabindex="-1"></a>         <span class="at">p_removed =</span> <span class="fu">round</span>(n_removed<span class="sc">/</span>n_old<span class="sc">*</span><span class="dv">100</span>, <span class="at">digits =</span> <span class="dv">2</span>)) </span>
+<span id="cb30-6"><a href="#cb30-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb30-7"><a href="#cb30-7" aria-hidden="true" tabindex="-1"></a>filtering_numb</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code># A tibble: 3 × 5
+  experiment n_old       n_new       n_removed   p_removed  
+  &lt;chr&gt;      &lt;table[1d]&gt; &lt;table[1d]&gt; &lt;table[1d]&gt; &lt;table[1d]&gt;
+1 B0          458         447         11         2.40       
+2 B11         858         817         41         4.78       
+3 B21        4882        4697        185         3.79       </code></pre>
+</div>
+</div>
+<p>The percentage of cells removed from each experiment is 2.4-4.8%, which seems reasonable. We see how many cells and genes are removed in total.</p>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb32"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb32-1"><a href="#cb32-1" aria-hidden="true" tabindex="-1"></a><span class="fu">print</span>(<span class="fu">paste</span>(<span class="st">"Genes removed: "</span>, </span>
+<span id="cb32-2"><a href="#cb32-2" aria-hidden="true" tabindex="-1"></a>            <span class="fu">dim</span>(seu_obj)[<span class="dv">1</span>] <span class="sc">-</span> <span class="fu">dim</span>(seu_obj_filtered)[<span class="dv">1</span>], </span>
+<span id="cb32-3"><a href="#cb32-3" aria-hidden="true" tabindex="-1"></a>            <span class="st">" ("</span>,</span>
+<span id="cb32-4"><a href="#cb32-4" aria-hidden="true" tabindex="-1"></a>            <span class="fu">round</span>((<span class="fu">dim</span>(seu_obj)[<span class="dv">1</span>] <span class="sc">-</span> <span class="fu">dim</span>(seu_obj_filtered)[<span class="dv">1</span>])<span class="sc">/</span><span class="fu">dim</span>(seu_obj)[<span class="dv">1</span>] <span class="sc">*</span> <span class="dv">100</span>, </span>
+<span id="cb32-5"><a href="#cb32-5" aria-hidden="true" tabindex="-1"></a>                  <span class="at">digits =</span> <span class="dv">2</span>),</span>
+<span id="cb32-6"><a href="#cb32-6" aria-hidden="true" tabindex="-1"></a>            <span class="st">"%)"</span>,</span>
+<span id="cb32-7"><a href="#cb32-7" aria-hidden="true" tabindex="-1"></a>      <span class="at">sep =</span> <span class="st">""</span>))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>[1] "Genes removed: 56 (0.42%)"</code></pre>
+</div>
+<div class="sourceCode cell-code" id="cb34"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb34-1"><a href="#cb34-1" aria-hidden="true" tabindex="-1"></a><span class="fu">print</span>(<span class="fu">paste</span>(<span class="st">"Cells removed: "</span>, </span>
+<span id="cb34-2"><a href="#cb34-2" aria-hidden="true" tabindex="-1"></a>            <span class="fu">dim</span>(seu_obj)[<span class="dv">2</span>] <span class="sc">-</span> <span class="fu">dim</span>(seu_obj_filtered)[<span class="dv">2</span>], </span>
+<span id="cb34-3"><a href="#cb34-3" aria-hidden="true" tabindex="-1"></a>            <span class="st">" ("</span>,</span>
+<span id="cb34-4"><a href="#cb34-4" aria-hidden="true" tabindex="-1"></a>            <span class="fu">round</span>((<span class="fu">dim</span>(seu_obj)[<span class="dv">2</span>] <span class="sc">-</span> <span class="fu">dim</span>(seu_obj_filtered)[<span class="dv">2</span>])<span class="sc">/</span><span class="fu">dim</span>(seu_obj)[<span class="dv">2</span>] <span class="sc">*</span> <span class="dv">100</span>, </span>
+<span id="cb34-5"><a href="#cb34-5" aria-hidden="true" tabindex="-1"></a>                  <span class="at">digits =</span> <span class="dv">2</span>),</span>
+<span id="cb34-6"><a href="#cb34-6" aria-hidden="true" tabindex="-1"></a>            <span class="st">"%)"</span>,</span>
+<span id="cb34-7"><a href="#cb34-7" aria-hidden="true" tabindex="-1"></a>      <span class="at">sep =</span> <span class="st">""</span>))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>[1] "Cells removed: 237 (3.82%)"</code></pre>
+</div>
+</div>
+</section>
+</section>
+<section id="demultiplexing" class="level2">
+<h2 class="anchored" data-anchor-id="demultiplexing">Demultiplexing</h2>
+<p>We wish to demultiplex cells to their the original sample-of-origin and identify doublets. The following section follows the guide described in the hashing vignette:</p>
+<p><a href="https://satijalab.org/seurat/archive/v3.1/hashing_vignette.html" class="uri">https://satijalab.org/seurat/archive/v3.1/hashing_vignette.html</a></p>
+<section id="assign-cells-to-replicate" class="level3">
+<h3 class="anchored" data-anchor-id="assign-cells-to-replicate">Assign Cells To Replicate</h3>
+<p>Before assigning the cells back to their sample origins, the HTO data is normalized using centered log ratio (CLR) transformation, where counts were divided by the geometric mean of an HTO across cells in a single experiment and log-transformed:</p>
+<p><span class="math display">\[
+x_i' = \log\frac{x_i}{(\prod_{i=1}^{n} x_i)^{\frac{1}{n}}}
+\]</span></p>
+<p>Here, <span class="math inline">\(x_i\)</span> is the count for a specified HTO in cell <span class="math inline">\(i\)</span>, <span class="math inline">\(n\)</span> is the total number of cells.</p>
+<p>We use the Seurat function HTODemux() to assign cells to their origin. This function identifies an expression threshold for each HTO to classify cells as either singlets together with their sample-of-origin, doublets and negative cells (empty droplets). The procedure is as follows for a single experiment (lane):</p>
+<ol type="1">
+<li>The cells are clustered into <span class="math inline">\(K+1\)</span> clusters, where <span class="math inline">\(K\)</span> is the number of samples (which is 4 in this case).</li>
+</ol>
+<p>The following procedure is performed for each HTOs:</p>
+<ol start="2" type="1">
+<li><p>We identified the <span class="math inline">\(K\)</span>-medoids cluster with the highest average HTO expression and excluded these cells. That is, we use the cluster with the lowest average value as the negative group to determine a background distribution for each HTO based on “negative” cells. Outliers from this distribution is thought to represent positive signals.</p></li>
+<li><p>The highest 0.5 % HTO expressing cells are excluded from the negative group to get rid of potential outliers.</p></li>
+<li><p>A negative binomial distribution is fitted to the remaining HTO values. The 0.99 quantile of the distribution is chosen as the HTO-specific threshold.</p></li>
+</ol>
+<p>Afterwards, we can compared the HTO expression for each of the cells. If their expression level for a given HTO exceeds the threshold, they are positive for this HTO. Cells that were positive for only one HTO are classified as singlets. Cells that were positive for two or more HTOs or negative for all HTOs were classified as doublets or negatives, respectively.</p>
+<p>The 0.99 quantile for the negative binomial distribution is the default value for the HTODemux function. Lowering the threshold will result in less cells being classified as negatives. However, more cells would be thought as doublets.</p>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb36"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb36-1"><a href="#cb36-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Create list to collect Seurat objects for each lane.</span></span>
+<span id="cb36-2"><a href="#cb36-2" aria-hidden="true" tabindex="-1"></a>list_seu_obj <span class="ot">&lt;-</span> <span class="fu">list</span>()</span>
+<span id="cb36-3"><a href="#cb36-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb36-4"><a href="#cb36-4" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> (i <span class="cf">in</span> <span class="dv">1</span><span class="sc">:</span>exp_numb){</span>
+<span id="cb36-5"><a href="#cb36-5" aria-hidden="true" tabindex="-1"></a>  <span class="co"># Get the cells from a single 10x lane.</span></span>
+<span id="cb36-6"><a href="#cb36-6" aria-hidden="true" tabindex="-1"></a>  exp_seu_obj <span class="ot">&lt;-</span> <span class="fu">subset</span>(seu_obj_filtered,</span>
+<span id="cb36-7"><a href="#cb36-7" aria-hidden="true" tabindex="-1"></a>                        experiment <span class="sc">==</span> exp_label[i])</span>
+<span id="cb36-8"><a href="#cb36-8" aria-hidden="true" tabindex="-1"></a>  </span>
+<span id="cb36-9"><a href="#cb36-9" aria-hidden="true" tabindex="-1"></a>  <span class="co"># Normalize the HTO expression levels.</span></span>
+<span id="cb36-10"><a href="#cb36-10" aria-hidden="true" tabindex="-1"></a>  exp_seu_obj <span class="ot">&lt;-</span> <span class="fu">NormalizeData</span>(exp_seu_obj,</span>
+<span id="cb36-11"><a href="#cb36-11" aria-hidden="true" tabindex="-1"></a>                               <span class="at">assay =</span> <span class="st">"HTO"</span>,</span>
+<span id="cb36-12"><a href="#cb36-12" aria-hidden="true" tabindex="-1"></a>                               <span class="at">normalization.method =</span> <span class="st">"CLR"</span>)</span>
+<span id="cb36-13"><a href="#cb36-13" aria-hidden="true" tabindex="-1"></a>  </span>
+<span id="cb36-14"><a href="#cb36-14" aria-hidden="true" tabindex="-1"></a>  <span class="co"># Demultiplex cells to their the original sample-of-origin.</span></span>
+<span id="cb36-15"><a href="#cb36-15" aria-hidden="true" tabindex="-1"></a>  exp_seu_obj <span class="ot">&lt;-</span> <span class="fu">HTODemux</span>(exp_seu_obj,</span>
+<span id="cb36-16"><a href="#cb36-16" aria-hidden="true" tabindex="-1"></a>                          <span class="at">assay =</span> <span class="st">"HTO"</span>,</span>
+<span id="cb36-17"><a href="#cb36-17" aria-hidden="true" tabindex="-1"></a>                          <span class="at">positive.quantile =</span> <span class="fl">0.99</span>)</span>
+<span id="cb36-18"><a href="#cb36-18" aria-hidden="true" tabindex="-1"></a>  </span>
+<span id="cb36-19"><a href="#cb36-19" aria-hidden="true" tabindex="-1"></a>  <span class="co"># Save the results.</span></span>
+<span id="cb36-20"><a href="#cb36-20" aria-hidden="true" tabindex="-1"></a>  list_seu_obj[i] <span class="ot">&lt;-</span> exp_seu_obj</span>
+<span id="cb36-21"><a href="#cb36-21" aria-hidden="true" tabindex="-1"></a>}</span>
+<span id="cb36-22"><a href="#cb36-22" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb36-23"><a href="#cb36-23" aria-hidden="true" tabindex="-1"></a><span class="co"># Merge the Seurat objects created for each experiment. </span></span>
+<span id="cb36-24"><a href="#cb36-24" aria-hidden="true" tabindex="-1"></a>seu_obj_filtered <span class="ot">&lt;-</span> <span class="fu">merge</span>(<span class="fu">unlist</span>(list_seu_obj)[[<span class="dv">1</span>]],</span>
+<span id="cb36-25"><a href="#cb36-25" aria-hidden="true" tabindex="-1"></a>                          <span class="at">y =</span> <span class="fu">unlist</span>(list_seu_obj)[<span class="dv">2</span><span class="sc">:</span>exp_numb])</span>
+<span id="cb36-26"><a href="#cb36-26" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb36-27"><a href="#cb36-27" aria-hidden="true" tabindex="-1"></a>seu_obj_filtered</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>An object of class Seurat 
+13362 features across 5961 samples within 2 assays 
+Active assay: RNA (13359 features, 0 variable features)
+ 3 layers present: counts.1, counts.2, counts.3
+ 1 other assay present: HTO</code></pre>
+</div>
+</div>
+<p>Seurat v5 assays store the count data in layers after merge. These layers are joined.</p>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb38"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb38-1"><a href="#cb38-1" aria-hidden="true" tabindex="-1"></a>seu_obj_filtered[[<span class="st">"RNA"</span>]] <span class="ot">&lt;-</span> <span class="fu">JoinLayers</span>(seu_obj_filtered[[<span class="st">"RNA"</span>]])</span>
+<span id="cb38-2"><a href="#cb38-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb38-3"><a href="#cb38-3" aria-hidden="true" tabindex="-1"></a>seu_obj_filtered</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>An object of class Seurat 
+13362 features across 5961 samples within 2 assays 
+Active assay: RNA (13359 features, 0 variable features)
+ 1 layer present: counts
+ 1 other assay present: HTO</code></pre>
+</div>
+</div>
+<p>There are a lot of information from the demultiplexing added to the metadata. Information about the output from HTODemux can be found here:</p>
+<p><a href="https://www.rdocumentation.org/packages/Seurat/versions/5.0.1/topics/HTODemux" class="uri">https://www.rdocumentation.org/packages/Seurat/versions/5.0.1/topics/HTODemux</a></p>
+<p>We will chose to focus on HTO_classification.global, HTO_maxID and hash.ID:</p>
+<ul>
+<li><p>HTO.maxID - Name of hashtag with the highest signal.</p></li>
+<li><p>HTO_classification.global - Global classification result (singlet, doublet or negative).</p></li>
+<li><p>hash.ID - Classification result (replicate, doublet or negative).</p></li>
+</ul>
+<p>We look at the number of cells classified as singlets, doublets and negative/ambiguous cells across the three experiments.</p>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb40"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb40-1"><a href="#cb40-1" aria-hidden="true" tabindex="-1"></a><span class="fu">label</span>(seu_obj_filtered<span class="sc">@</span>meta.data<span class="sc">$</span>HTO_classification.global) <span class="ot">&lt;-</span> <span class="st">"HTO Classification"</span></span>
+<span id="cb40-2"><a href="#cb40-2" aria-hidden="true" tabindex="-1"></a><span class="fu">table1</span>(<span class="at">data =</span> seu_obj_filtered<span class="sc">@</span>meta.data,</span>
+<span id="cb40-3"><a href="#cb40-3" aria-hidden="true" tabindex="-1"></a>       <span class="sc">~</span> HTO_classification.global <span class="sc">|</span> experiment,</span>
+<span id="cb40-4"><a href="#cb40-4" aria-hidden="true" tabindex="-1"></a>       <span class="at">caption =</span> <span class="st">"Experiment"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output-display">
+
+<div class="Rtable1">
+<table class="Rtable1 table table-sm table-striped small" data-quarto-postprocess="true">
+<caption>Experiment</caption>
+<colgroup>
+<col style="width: 20%">
+<col style="width: 20%">
+<col style="width: 20%">
+<col style="width: 20%">
+<col style="width: 20%">
+</colgroup>
+<thead>
+<tr class="header">
+<th class="rowlabel firstrow lastrow" data-quarto-table-cell-role="th"></th>
+<th class="firstrow lastrow" data-quarto-table-cell-role="th"><span class="stratlabel">B0<br>
+<span class="stratn">(N=447)</span></span></th>
+<th class="firstrow lastrow" data-quarto-table-cell-role="th"><span class="stratlabel">B11<br>
+<span class="stratn">(N=817)</span></span></th>
+<th class="firstrow lastrow" data-quarto-table-cell-role="th"><span class="stratlabel">B21<br>
+<span class="stratn">(N=4697)</span></span></th>
+<th class="firstrow lastrow" data-quarto-table-cell-role="th"><span class="stratlabel">Overall<br>
+<span class="stratn">(N=5961)</span></span></th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td class="rowlabel firstrow">HTO Classification</td>
+<td class="firstrow"></td>
+<td class="firstrow"></td>
+<td class="firstrow"></td>
+<td class="firstrow"></td>
+</tr>
+<tr class="even">
+<td class="rowlabel">Doublet</td>
+<td>9 (2.0%)</td>
+<td>57 (7.0%)</td>
+<td>287 (6.1%)</td>
+<td>353 (5.9%)</td>
+</tr>
+<tr class="odd">
+<td class="rowlabel">Negative</td>
+<td>2 (0.4%)</td>
+<td>27 (3.3%)</td>
+<td>165 (3.5%)</td>
+<td>194 (3.3%)</td>
+</tr>
+<tr class="even">
+<td class="rowlabel lastrow">Singlet</td>
+<td class="lastrow">436 (97.5%)</td>
+<td class="lastrow">733 (89.7%)</td>
+<td class="lastrow">4245 (90.4%)</td>
+<td class="lastrow">5414 (90.8%)</td>
+</tr>
+</tbody>
+</table>
+
+</div>
+</div>
+</div>
+<p>We inspect the expression of the hashtags for the each of the classes given by hash.ID to see how the demultiplexing went.</p>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb41"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb41-1"><a href="#cb41-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Replicate labels.</span></span>
+<span id="cb41-2"><a href="#cb41-2" aria-hidden="true" tabindex="-1"></a>rep_label <span class="ot">&lt;-</span> <span class="fu">rownames</span>(seu_obj_filtered[[<span class="st">"HTO"</span>]])</span>
+<span id="cb41-3"><a href="#cb41-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb41-4"><a href="#cb41-4" aria-hidden="true" tabindex="-1"></a><span class="co"># Number of experiments/lanes.</span></span>
+<span id="cb41-5"><a href="#cb41-5" aria-hidden="true" tabindex="-1"></a>rep_numb <span class="ot">&lt;-</span> <span class="fu">length</span>(rep_label)</span>
+<span id="cb41-6"><a href="#cb41-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb41-7"><a href="#cb41-7" aria-hidden="true" tabindex="-1"></a>hashtag <span class="ot">&lt;-</span> <span class="fu">c</span>(<span class="st">"Replicate 1"</span>, <span class="st">"Replicate 2"</span>, <span class="st">"Replicate 3"</span>)</span>
+<span id="cb41-8"><a href="#cb41-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb41-9"><a href="#cb41-9" aria-hidden="true" tabindex="-1"></a><span class="fu">Idents</span>(seu_obj_filtered) <span class="ot">&lt;-</span> <span class="fu">factor</span>(seu_obj_filtered<span class="sc">@</span>meta.data<span class="sc">$</span>hash.ID,</span>
+<span id="cb41-10"><a href="#cb41-10" aria-hidden="true" tabindex="-1"></a>                                   <span class="at">levels =</span> <span class="fu">c</span>(rep_label, <span class="st">"Doublet"</span>, <span class="st">"Negative"</span>),</span>
+<span id="cb41-11"><a href="#cb41-11" aria-hidden="true" tabindex="-1"></a>                                   <span class="at">labels =</span> <span class="fu">c</span>(hashtag, <span class="st">"Doublet"</span>, <span class="st">"Negative"</span>))</span>
+<span id="cb41-12"><a href="#cb41-12" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb41-13"><a href="#cb41-13" aria-hidden="true" tabindex="-1"></a><span class="co"># Create list to gather the plots.</span></span>
+<span id="cb41-14"><a href="#cb41-14" aria-hidden="true" tabindex="-1"></a>list_ridgeplot <span class="ot">&lt;-</span> <span class="fu">list</span>()</span>
+<span id="cb41-15"><a href="#cb41-15" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb41-16"><a href="#cb41-16" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> (i <span class="cf">in</span> <span class="dv">1</span><span class="sc">:</span>exp_numb){</span>
+<span id="cb41-17"><a href="#cb41-17" aria-hidden="true" tabindex="-1"></a>  ridgeplot_sample <span class="ot">&lt;-</span> <span class="fu">RidgePlot</span>(<span class="fu">subset</span>(seu_obj_filtered, </span>
+<span id="cb41-18"><a href="#cb41-18" aria-hidden="true" tabindex="-1"></a>                                       experiment <span class="sc">==</span> exp_label[i]),</span>
+<span id="cb41-19"><a href="#cb41-19" aria-hidden="true" tabindex="-1"></a>                                <span class="at">assay =</span> <span class="st">"HTO"</span>,</span>
+<span id="cb41-20"><a href="#cb41-20" aria-hidden="true" tabindex="-1"></a>                                <span class="at">features =</span> rep_label,</span>
+<span id="cb41-21"><a href="#cb41-21" aria-hidden="true" tabindex="-1"></a>                                <span class="at">combine =</span> <span class="cn">FALSE</span>) </span>
+<span id="cb41-22"><a href="#cb41-22" aria-hidden="true" tabindex="-1"></a>  </span>
+<span id="cb41-23"><a href="#cb41-23" aria-hidden="true" tabindex="-1"></a>  <span class="co"># Modify the plots from RidgePlot function before combining them.</span></span>
+<span id="cb41-24"><a href="#cb41-24" aria-hidden="true" tabindex="-1"></a>  <span class="cf">for</span> (j <span class="cf">in</span> <span class="dv">1</span><span class="sc">:</span><span class="fu">length</span>(ridgeplot_sample)){</span>
+<span id="cb41-25"><a href="#cb41-25" aria-hidden="true" tabindex="-1"></a>    ridgeplot_sample[[j]] <span class="ot">&lt;-</span> ridgeplot_sample[[j]] <span class="sc">+</span></span>
+<span id="cb41-26"><a href="#cb41-26" aria-hidden="true" tabindex="-1"></a>      <span class="fu">labs</span>(<span class="at">title =</span> <span class="fu">paste</span>(exp_label[i],</span>
+<span id="cb41-27"><a href="#cb41-27" aria-hidden="true" tabindex="-1"></a>                         hashtag[j],</span>
+<span id="cb41-28"><a href="#cb41-28" aria-hidden="true" tabindex="-1"></a>                         <span class="st">"HTO"</span>),</span>
+<span id="cb41-29"><a href="#cb41-29" aria-hidden="true" tabindex="-1"></a>           <span class="at">y =</span> <span class="st">""</span>) <span class="sc">+</span></span>
+<span id="cb41-30"><a href="#cb41-30" aria-hidden="true" tabindex="-1"></a>      <span class="fu">theme</span>(<span class="at">plot.title =</span> <span class="fu">element_text</span>(<span class="at">hjust =</span> <span class="sc">-</span><span class="fl">0.2</span>),</span>
+<span id="cb41-31"><a href="#cb41-31" aria-hidden="true" tabindex="-1"></a>            <span class="at">legend.position =</span> <span class="st">"none"</span>)}</span>
+<span id="cb41-32"><a href="#cb41-32" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb41-33"><a href="#cb41-33" aria-hidden="true" tabindex="-1"></a>  list_ridgeplot[[i]] <span class="ot">&lt;-</span> <span class="fu">wrap_plots</span>(ridgeplot_sample, <span class="at">ncol =</span> <span class="dv">1</span>)</span>
+<span id="cb41-34"><a href="#cb41-34" aria-hidden="true" tabindex="-1"></a>  </span>
+<span id="cb41-35"><a href="#cb41-35" aria-hidden="true" tabindex="-1"></a>  <span class="co"># Save the results for each experiment.</span></span>
+<span id="cb41-36"><a href="#cb41-36" aria-hidden="true" tabindex="-1"></a>  <span class="fu">ggsave</span>(<span class="at">filename =</span> <span class="fu">paste</span>(<span class="st">"ridgeplot_"</span>, exp_label[i], <span class="st">".png"</span>, <span class="at">sep =</span> <span class="st">""</span>),</span>
+<span id="cb41-37"><a href="#cb41-37" aria-hidden="true" tabindex="-1"></a>         <span class="at">path =</span> result_path,</span>
+<span id="cb41-38"><a href="#cb41-38" aria-hidden="true" tabindex="-1"></a>         <span class="at">plot =</span> list_ridgeplot[[i]],</span>
+<span id="cb41-39"><a href="#cb41-39" aria-hidden="true" tabindex="-1"></a>         <span class="at">width =</span> <span class="dv">6</span>,</span>
+<span id="cb41-40"><a href="#cb41-40" aria-hidden="true" tabindex="-1"></a>         <span class="at">height =</span> <span class="dv">10</span>)</span>
+<span id="cb41-41"><a href="#cb41-41" aria-hidden="true" tabindex="-1"></a>}</span>
+<span id="cb41-42"><a href="#cb41-42" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb41-43"><a href="#cb41-43" aria-hidden="true" tabindex="-1"></a><span class="co"># Combine the results for all experiments.</span></span>
+<span id="cb41-44"><a href="#cb41-44" aria-hidden="true" tabindex="-1"></a>ridgeplot_all <span class="ot">&lt;-</span> list_ridgeplot[[<span class="dv">1</span>]] <span class="sc">|</span> list_ridgeplot[[<span class="dv">2</span>]] <span class="sc">|</span> list_ridgeplot[[<span class="dv">3</span>]]</span>
+<span id="cb41-45"><a href="#cb41-45" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb41-46"><a href="#cb41-46" aria-hidden="true" tabindex="-1"></a><span class="fu">ggsave</span>(<span class="at">filename =</span> <span class="st">"ridgeplot.png"</span>,</span>
+<span id="cb41-47"><a href="#cb41-47" aria-hidden="true" tabindex="-1"></a>       <span class="at">path =</span> result_path,</span>
+<span id="cb41-48"><a href="#cb41-48" aria-hidden="true" tabindex="-1"></a>       <span class="at">plot =</span> ridgeplot_all,</span>
+<span id="cb41-49"><a href="#cb41-49" aria-hidden="true" tabindex="-1"></a>       <span class="at">width =</span> <span class="dv">18</span>,</span>
+<span id="cb41-50"><a href="#cb41-50" aria-hidden="true" tabindex="-1"></a>       <span class="at">height =</span> <span class="dv">10</span>)</span>
+<span id="cb41-51"><a href="#cb41-51" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb41-52"><a href="#cb41-52" aria-hidden="true" tabindex="-1"></a>ridgeplot_all</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output-display">
+<p><img src="preprocessing_files/figure-html/unnamed-chunk-25-1.png" class="img-fluid" width="672"></p>
+</div>
+</div>
+<p>It seems that the demultiplexing based on data from HTO expression went well. We visualize pairs of HTO signals to further explore the results.</p>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb42"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb42-1"><a href="#cb42-1" aria-hidden="true" tabindex="-1"></a>qcPlotScatterHTO <span class="ot">&lt;-</span> <span class="cf">function</span>(data, feature, feature_name){</span>
+<span id="cb42-2"><a href="#cb42-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">FeatureScatter</span>({{data}}, </span>
+<span id="cb42-3"><a href="#cb42-3" aria-hidden="true" tabindex="-1"></a>                 <span class="at">feature1 =</span> <span class="fu">paste</span>(<span class="st">"hto_"</span>, feature[<span class="dv">1</span>], <span class="at">sep =</span> <span class="st">""</span>),</span>
+<span id="cb42-4"><a href="#cb42-4" aria-hidden="true" tabindex="-1"></a>                 <span class="at">feature2 =</span> <span class="fu">paste</span>(<span class="st">"hto_"</span>, feature[<span class="dv">2</span>], <span class="at">sep =</span> <span class="st">""</span>),</span>
+<span id="cb42-5"><a href="#cb42-5" aria-hidden="true" tabindex="-1"></a>                 <span class="at">plot.cor =</span> <span class="cn">FALSE</span>) <span class="sc">+</span></span>
+<span id="cb42-6"><a href="#cb42-6" aria-hidden="true" tabindex="-1"></a>    <span class="fu">xlab</span>(<span class="fu">paste</span>(feature_name[<span class="dv">1</span>], <span class="st">"HTO Exp."</span>)) <span class="sc">+</span></span>
+<span id="cb42-7"><a href="#cb42-7" aria-hidden="true" tabindex="-1"></a>    <span class="fu">ylab</span>(<span class="fu">paste</span>(feature_name[<span class="dv">2</span>], <span class="st">"HTO Exp."</span>)) <span class="sc">+</span> </span>
+<span id="cb42-8"><a href="#cb42-8" aria-hidden="true" tabindex="-1"></a>    <span class="fu">labs</span>(<span class="at">colour =</span> <span class="st">"HTO Classification"</span>) </span>
+<span id="cb42-9"><a href="#cb42-9" aria-hidden="true" tabindex="-1"></a>}</span>
+<span id="cb42-10"><a href="#cb42-10" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb42-11"><a href="#cb42-11" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb42-12"><a href="#cb42-12" aria-hidden="true" tabindex="-1"></a><span class="co"># Create list to store unique pairs.</span></span>
+<span id="cb42-13"><a href="#cb42-13" aria-hidden="true" tabindex="-1"></a>unique_pairs <span class="ot">&lt;-</span> <span class="fu">list</span>()</span>
+<span id="cb42-14"><a href="#cb42-14" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb42-15"><a href="#cb42-15" aria-hidden="true" tabindex="-1"></a><span class="co"># Generate unique pairs</span></span>
+<span id="cb42-16"><a href="#cb42-16" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> (i <span class="cf">in</span> <span class="dv">1</span><span class="sc">:</span>rep_numb){</span>
+<span id="cb42-17"><a href="#cb42-17" aria-hidden="true" tabindex="-1"></a>  <span class="cf">for</span> (j <span class="cf">in</span> <span class="dv">1</span><span class="sc">:</span>rep_numb){</span>
+<span id="cb42-18"><a href="#cb42-18" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> (i <span class="sc">!=</span> j){</span>
+<span id="cb42-19"><a href="#cb42-19" aria-hidden="true" tabindex="-1"></a>      pair <span class="ot">&lt;-</span> <span class="fu">list</span>(<span class="fu">sort</span>(<span class="fu">c</span>(rep_label[i], rep_label[j])))</span>
+<span id="cb42-20"><a href="#cb42-20" aria-hidden="true" tabindex="-1"></a>      <span class="cf">if</span> (<span class="sc">!</span>(pair <span class="sc">%in%</span> unique_pairs)){</span>
+<span id="cb42-21"><a href="#cb42-21" aria-hidden="true" tabindex="-1"></a>        unique_pairs <span class="ot">&lt;-</span> <span class="fu">c</span>(unique_pairs, pair)</span>
+<span id="cb42-22"><a href="#cb42-22" aria-hidden="true" tabindex="-1"></a>      }</span>
+<span id="cb42-23"><a href="#cb42-23" aria-hidden="true" tabindex="-1"></a>    }</span>
+<span id="cb42-24"><a href="#cb42-24" aria-hidden="true" tabindex="-1"></a>  }</span>
+<span id="cb42-25"><a href="#cb42-25" aria-hidden="true" tabindex="-1"></a>}</span>
+<span id="cb42-26"><a href="#cb42-26" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb42-27"><a href="#cb42-27" aria-hidden="true" tabindex="-1"></a><span class="co"># Create list to store plots. </span></span>
+<span id="cb42-28"><a href="#cb42-28" aria-hidden="true" tabindex="-1"></a>list_scatterHTO <span class="ot">&lt;-</span> <span class="fu">list</span>()</span>
+<span id="cb42-29"><a href="#cb42-29" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb42-30"><a href="#cb42-30" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> (i <span class="cf">in</span> <span class="dv">1</span><span class="sc">:</span><span class="fu">length</span>(unique_pairs)){</span>
+<span id="cb42-31"><a href="#cb42-31" aria-hidden="true" tabindex="-1"></a>  rep_label_clean <span class="ot">&lt;-</span> <span class="fu">str_replace</span>(rep_label, <span class="st">"M.Rep(</span><span class="sc">\\</span><span class="st">d)"</span>, <span class="st">"Rep(</span><span class="sc">\\</span><span class="st">d)"</span>)</span>
+<span id="cb42-32"><a href="#cb42-32" aria-hidden="true" tabindex="-1"></a>  list_scatterHTO[[i]] <span class="ot">&lt;-</span> <span class="fu">qcPlotScatterHTO</span>(seu_obj_filtered,  </span>
+<span id="cb42-33"><a href="#cb42-33" aria-hidden="true" tabindex="-1"></a>                                           unique_pairs[[i]],</span>
+<span id="cb42-34"><a href="#cb42-34" aria-hidden="true" tabindex="-1"></a>                                           <span class="fu">str_replace</span>(unique_pairs[[i]], </span>
+<span id="cb42-35"><a href="#cb42-35" aria-hidden="true" tabindex="-1"></a>                                                       <span class="st">"M.Rep(</span><span class="sc">\\</span><span class="st">d)"</span>, </span>
+<span id="cb42-36"><a href="#cb42-36" aria-hidden="true" tabindex="-1"></a>                                                       <span class="st">"Rep. </span><span class="sc">\\</span><span class="st">1"</span>))</span>
+<span id="cb42-37"><a href="#cb42-37" aria-hidden="true" tabindex="-1"></a>}</span>
+<span id="cb42-38"><a href="#cb42-38" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb42-39"><a href="#cb42-39" aria-hidden="true" tabindex="-1"></a><span class="co"># Combine the plots.</span></span>
+<span id="cb42-40"><a href="#cb42-40" aria-hidden="true" tabindex="-1"></a>scatterHTO_all <span class="ot">&lt;-</span> (list_scatterHTO[[<span class="dv">1</span>]] <span class="sc">+</span> <span class="fu">theme</span>(<span class="at">legend.position =</span> <span class="st">"none"</span>)) <span class="sc">|</span> (list_scatterHTO[[<span class="dv">2</span>]] <span class="sc">+</span> <span class="fu">theme</span>(<span class="at">legend.position =</span> <span class="st">"none"</span>)) <span class="sc">|</span> list_scatterHTO[[<span class="dv">3</span>]]</span>
+<span id="cb42-41"><a href="#cb42-41" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb42-42"><a href="#cb42-42" aria-hidden="true" tabindex="-1"></a><span class="fu">ggsave</span>(<span class="at">filename =</span> <span class="st">"scatterHTO.png"</span>,</span>
+<span id="cb42-43"><a href="#cb42-43" aria-hidden="true" tabindex="-1"></a>       <span class="at">path =</span> result_path,</span>
+<span id="cb42-44"><a href="#cb42-44" aria-hidden="true" tabindex="-1"></a>       <span class="at">plot =</span> scatterHTO_all,</span>
+<span id="cb42-45"><a href="#cb42-45" aria-hidden="true" tabindex="-1"></a>       <span class="at">width =</span> <span class="dv">18</span>,</span>
+<span id="cb42-46"><a href="#cb42-46" aria-hidden="true" tabindex="-1"></a>       <span class="at">height =</span> <span class="dv">6</span>)</span>
+<span id="cb42-47"><a href="#cb42-47" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb42-48"><a href="#cb42-48" aria-hidden="true" tabindex="-1"></a>scatterHTO_all</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output-display">
+<p><img src="preprocessing_files/figure-html/unnamed-chunk-26-1.png" class="img-fluid" width="672"></p>
+</div>
+</div>
+<p>The scatter plots show that negatives are mainly found for cells expressing HTO for replicate 2. Some cells are also classified as doublets though they have high expression of a single HTO. We take a look at the number of RNA molecules across the HTO classification groups.</p>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb43"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb43-1"><a href="#cb43-1" aria-hidden="true" tabindex="-1"></a><span class="fu">qcPlotVln</span>(seu_obj_filtered, </span>
+<span id="cb43-2"><a href="#cb43-2" aria-hidden="true" tabindex="-1"></a>          HTO_classification.global, <span class="st">"HTO Classification"</span>, </span>
+<span id="cb43-3"><a href="#cb43-3" aria-hidden="true" tabindex="-1"></a>          nCount_molecules, <span class="st">"Number of molecules"</span>) <span class="sc">+</span> </span>
+<span id="cb43-4"><a href="#cb43-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">labs</span>(<span class="at">title =</span> <span class="st">"Number of RNA Molecules Across HTO Classification Groups"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output-display">
+<p><img src="preprocessing_files/figure-html/unnamed-chunk-27-1.png" class="img-fluid" width="672"></p>
+</div>
+<div class="sourceCode cell-code" id="cb44"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb44-1"><a href="#cb44-1" aria-hidden="true" tabindex="-1"></a><span class="fu">ggsave</span>(<span class="at">filename =</span> <span class="st">"vlnHTO_molecules.png"</span>,</span>
+<span id="cb44-2"><a href="#cb44-2" aria-hidden="true" tabindex="-1"></a>       <span class="at">path =</span> result_path,</span>
+<span id="cb44-3"><a href="#cb44-3" aria-hidden="true" tabindex="-1"></a>       <span class="at">width =</span> <span class="dv">10</span>,</span>
+<span id="cb44-4"><a href="#cb44-4" aria-hidden="true" tabindex="-1"></a>       <span class="at">height =</span> <span class="dv">6</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<p>From the plots, there seems to be two distributions. This might be because of huge differences in the number of RNA molecules expressed for each experiment. However, the doublets seems to have a higher number of molecules compared to the single cells as expected. We take a look at the number of genes.</p>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb45"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb45-1"><a href="#cb45-1" aria-hidden="true" tabindex="-1"></a><span class="fu">qcPlotVln</span>(seu_obj_filtered, </span>
+<span id="cb45-2"><a href="#cb45-2" aria-hidden="true" tabindex="-1"></a>          HTO_classification.global, <span class="st">"HTO Classification"</span>, </span>
+<span id="cb45-3"><a href="#cb45-3" aria-hidden="true" tabindex="-1"></a>          nCount_genes, <span class="st">"Number of genes"</span>) <span class="sc">+</span> </span>
+<span id="cb45-4"><a href="#cb45-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">labs</span>(<span class="at">title =</span> <span class="st">"Number of Genes Across HTO Classification Groups"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output-display">
+<p><img src="preprocessing_files/figure-html/unnamed-chunk-28-1.png" class="img-fluid" width="672"></p>
+</div>
+<div class="sourceCode cell-code" id="cb46"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb46-1"><a href="#cb46-1" aria-hidden="true" tabindex="-1"></a><span class="fu">ggsave</span>(<span class="at">filename =</span> <span class="st">"vlnHTO_genes.png"</span>,</span>
+<span id="cb46-2"><a href="#cb46-2" aria-hidden="true" tabindex="-1"></a>       <span class="at">path =</span> result_path,</span>
+<span id="cb46-3"><a href="#cb46-3" aria-hidden="true" tabindex="-1"></a>       <span class="at">width =</span> <span class="dv">10</span>,</span>
+<span id="cb46-4"><a href="#cb46-4" aria-hidden="true" tabindex="-1"></a>       <span class="at">height =</span> <span class="dv">6</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<p>Again, the distribution of the number of genes per cell tends to be a bit higher for the doublets than the singlets. The HTO demultiplexing results can also be visualized by the heatmap below.</p>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb47"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb47-1"><a href="#cb47-1" aria-hidden="true" tabindex="-1"></a>heatmap_prefiltering <span class="ot">&lt;-</span> <span class="fu">HTOHeatmap</span>(seu_obj_filtered,</span>
+<span id="cb47-2"><a href="#cb47-2" aria-hidden="true" tabindex="-1"></a>                                   <span class="at">assay =</span> <span class="st">"HTO"</span>,</span>
+<span id="cb47-3"><a href="#cb47-3" aria-hidden="true" tabindex="-1"></a>                                   <span class="at">ncells =</span> <span class="fu">dim</span>(seu_obj_filtered)[<span class="dv">1</span>]) <span class="sc">+</span></span>
+<span id="cb47-4"><a href="#cb47-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">ggtitle</span>(<span class="st">"HTO Signals Across The Cells"</span>) <span class="sc">+</span></span>
+<span id="cb47-5"><a href="#cb47-5" aria-hidden="true" tabindex="-1"></a>  <span class="fu">theme</span>(<span class="at">plot.title =</span> <span class="fu">element_text</span>(<span class="at">hjust =</span> <span class="fl">0.5</span>))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stderr">
+<pre><code>Warning in HTOHeatmap(seu_obj_filtered, assay = "HTO", ncells =
+dim(seu_obj_filtered)[1]): ncells (13359) is larger than the number of cells
+present in the provided object (5961). Plotting heatmap for all cells.</code></pre>
+</div>
+<div class="cell-output cell-output-stderr">
+<pre><code>Warning: The `&lt;scale&gt;` argument of `guides()` cannot be `FALSE`. Use "none" instead as
+of ggplot2 3.3.4.
+ℹ The deprecated feature was likely used in the Seurat package.
+  Please report the issue at &lt;https://github.com/satijalab/seurat/issues&gt;.</code></pre>
+</div>
+<div class="sourceCode cell-code" id="cb50"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb50-1"><a href="#cb50-1" aria-hidden="true" tabindex="-1"></a><span class="fu">ggsave</span>(<span class="at">filename =</span> <span class="st">"heatmap_prefiltering.png"</span>,</span>
+<span id="cb50-2"><a href="#cb50-2" aria-hidden="true" tabindex="-1"></a>       <span class="at">path =</span> result_path,</span>
+<span id="cb50-3"><a href="#cb50-3" aria-hidden="true" tabindex="-1"></a>       <span class="at">plot =</span> heatmap_prefiltering)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stderr">
+<pre><code>Saving 7 x 5 in image</code></pre>
+</div>
+<div class="sourceCode cell-code" id="cb52"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb52-1"><a href="#cb52-1" aria-hidden="true" tabindex="-1"></a>heatmap_prefiltering</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output-display">
+<p><img src="preprocessing_files/figure-html/unnamed-chunk-29-1.png" class="img-fluid" width="672"></p>
+</div>
+</div>
+</section>
+<section id="remove-metadata" class="level3">
+<h3 class="anchored" data-anchor-id="remove-metadata">Remove Metadata</h3>
+<p>The metadata is cleaned up to remove unrelevant columns. We wish to remove nCount_HTO, nFeature_HTO, HTO_secondID, HTO_margin, HTO_classification.</p>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb53"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb53-1"><a href="#cb53-1" aria-hidden="true" tabindex="-1"></a>seu_obj_filtered<span class="sc">$</span>nCount_HTO         <span class="ot">&lt;-</span> <span class="cn">NULL</span></span>
+<span id="cb53-2"><a href="#cb53-2" aria-hidden="true" tabindex="-1"></a>seu_obj_filtered<span class="sc">$</span>nFeature_HTO       <span class="ot">&lt;-</span> <span class="cn">NULL</span></span>
+<span id="cb53-3"><a href="#cb53-3" aria-hidden="true" tabindex="-1"></a>seu_obj_filtered<span class="sc">$</span>HTO_secondID       <span class="ot">&lt;-</span> <span class="cn">NULL</span></span>
+<span id="cb53-4"><a href="#cb53-4" aria-hidden="true" tabindex="-1"></a>seu_obj_filtered<span class="sc">$</span>HTO_margin         <span class="ot">&lt;-</span> <span class="cn">NULL</span></span>
+<span id="cb53-5"><a href="#cb53-5" aria-hidden="true" tabindex="-1"></a>seu_obj_filtered<span class="sc">$</span>HTO_classification <span class="ot">&lt;-</span> <span class="cn">NULL</span></span>
+<span id="cb53-6"><a href="#cb53-6" aria-hidden="true" tabindex="-1"></a>seu_obj_filtered<span class="sc">$</span>hash.ID            <span class="ot">&lt;-</span> <span class="cn">NULL</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<p>We change the HTO_maxID, such that the replicate is decribed only by the digit.</p>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb54"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb54-1"><a href="#cb54-1" aria-hidden="true" tabindex="-1"></a>seu_obj_filtered<span class="sc">$</span>HTO_maxID <span class="ot">&lt;-</span> <span class="fu">factor</span>(<span class="fu">str_replace</span>(seu_obj_filtered<span class="sc">$</span>HTO_maxID,</span>
+<span id="cb54-2"><a href="#cb54-2" aria-hidden="true" tabindex="-1"></a>                                                 <span class="at">pattern =</span> <span class="st">"M.Rep(</span><span class="sc">\\</span><span class="st">d)"</span>,</span>
+<span id="cb54-3"><a href="#cb54-3" aria-hidden="true" tabindex="-1"></a>                                                 <span class="at">replacement =</span> <span class="st">"</span><span class="sc">\\</span><span class="st">1"</span>))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<p>The names are modified, and we take a look at the available metadata.</p>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb55"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb55-1"><a href="#cb55-1" aria-hidden="true" tabindex="-1"></a><span class="fu">colnames</span>(seu_obj_filtered<span class="sc">@</span>meta.data)[<span class="dv">6</span><span class="sc">:</span><span class="dv">7</span>] <span class="ot">&lt;-</span> <span class="fu">c</span>(<span class="st">"replicate"</span>, <span class="st">"hto_class"</span>)</span>
+<span id="cb55-2"><a href="#cb55-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb55-3"><a href="#cb55-3" aria-hidden="true" tabindex="-1"></a>seu_obj_filtered<span class="sc">@</span>meta.data[<span class="dv">1</span><span class="sc">:</span><span class="dv">10</span>,]</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>                     experiment nCount_molecules nCount_genes percent_mt
+1_AAACCTGAGTTTAGGA-1         B0             1964         1103  1.4256619
+1_AAACCTGCACAGGAGT-1         B0             6791         2131  1.2516566
+1_AAACCTGTCAAAGTAG-1         B0             2610         1415  0.3065134
+1_AAAGCAAAGAAACCTA-1         B0             2785         1486  2.1184919
+1_AAAGCAAGTTTGGCGC-1         B0             3771         1743  1.3259082
+1_AAAGTAGCACGCTTTC-1         B0             1597          919  2.7551659
+1_AAAGTAGCATATACGC-1         B0             5930         2370  1.8549747
+1_AAAGTAGTCAAACCAC-1         B0             4269         1940  1.2180839
+1_AAAGTAGTCGTACGGC-1         B0             3755         1716  1.3581891
+1_AAATGCCCACAGGAGT-1         B0             3630         1542  1.0192837
+                     percent_ribo replicate hto_class
+1_AAACCTGAGTTTAGGA-1   14.2566191         3   Singlet
+1_AAACCTGCACAGGAGT-1   21.1161832         2   Singlet
+1_AAACCTGTCAAAGTAG-1    5.5555556         3   Singlet
+1_AAAGCAAAGAAACCTA-1    8.2585278         2   Singlet
+1_AAAGCAAGTTTGGCGC-1    9.7321665         2   Singlet
+1_AAAGTAGCACGCTTTC-1    0.1878522         2  Negative
+1_AAAGTAGCATATACGC-1   11.0792580         3   Singlet
+1_AAAGTAGTCAAACCAC-1   10.8222066         2   Singlet
+1_AAAGTAGTCGTACGGC-1   12.8362184         1   Singlet
+1_AAATGCCCACAGGAGT-1   11.2672176         2   Singlet</code></pre>
+</div>
+</div>
+</section>
+</section>
+<section id="doublet-detection" class="level2">
+<h2 class="anchored" data-anchor-id="doublet-detection">Doublet Detection</h2>
+<p>We wish to identify doublets using the scDblFinder package, which gathers various methods for the detection and handling of doublets. As seen in the previous section, the HTODemux function can identify doublets, if cells express high levels of multiple HTOs. One limitation of this approach is that doublets of cells marked with the same HTO are not detected (intra-sample doublets). We will try to recover the remaining doublets based on their similarity with known doublets (inter-sample doublets) in the gene expression space. Relevant links are given below:</p>
+<p><a href="https://bioconductor.org/packages/release/bioc/vignettes/scDblFinder/inst/doc/recoverDoublets.html" class="uri">https://bioconductor.org/packages/release/bioc/vignettes/scDblFinder/inst/doc/recoverDoublets.html</a></p>
+<p><a href="https://bioconductor.org/books/3.13/OSCA.advanced/doublet-detection.html#doublet-detection-in-multiplexed-experiments" class="uri">https://bioconductor.org/books/3.13/OSCA.advanced/doublet-detection.html#doublet-detection-in-multiplexed-experiments</a></p>
+<section id="normalization" class="level3">
+<h3 class="anchored" data-anchor-id="normalization">Normalization</h3>
+<p>Before doublet detection, we must normalize and find variable features according to the standard Seurat workflow. The counts are normalized by dividing the count for each gene pr. cell by the total counts for that cell and multiplied by a scale factor. This is then log transformed using the natural log.</p>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb57"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb57-1"><a href="#cb57-1" aria-hidden="true" tabindex="-1"></a>seu_obj_filtered <span class="ot">&lt;-</span> <span class="fu">NormalizeData</span>(seu_obj_filtered,</span>
+<span id="cb57-2"><a href="#cb57-2" aria-hidden="true" tabindex="-1"></a>                                  <span class="at">normalization.method =</span> <span class="st">"LogNormalize"</span>,</span>
+<span id="cb57-3"><a href="#cb57-3" aria-hidden="true" tabindex="-1"></a>                                  <span class="at">scale.factor =</span> <span class="dv">10000</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stderr">
+<pre><code>Normalizing layer: counts</code></pre>
+</div>
+</div>
+</section>
+<section id="identification-of-highly-variable-features" class="level3">
+<h3 class="anchored" data-anchor-id="identification-of-highly-variable-features">Identification of Highly Variable Features</h3>
+<p>We find a subset of features that exhibit high cell-to-cell variation in the dataset. These genes are thought be the most biological relevant genes, and by focussing on these features the computations will become more efficient in the downstream analysis. We choose to find the 2000 most variable genes, which is the default value for the FindVariableFeatures function.</p>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb59"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb59-1"><a href="#cb59-1" aria-hidden="true" tabindex="-1"></a>seu_obj_filtered <span class="ot">&lt;-</span> <span class="fu">FindVariableFeatures</span>(seu_obj_filtered,</span>
+<span id="cb59-2"><a href="#cb59-2" aria-hidden="true" tabindex="-1"></a>                                         <span class="at">selection.method =</span> <span class="st">"vst"</span>,</span>
+<span id="cb59-3"><a href="#cb59-3" aria-hidden="true" tabindex="-1"></a>                                         <span class="at">nfeatures =</span> <span class="dv">2000</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stderr">
+<pre><code>Finding variable features for layer counts</code></pre>
+</div>
+</div>
+</section>
+<section id="scale-data" class="level3">
+<h3 class="anchored" data-anchor-id="scale-data">Scale Data</h3>
+<p>The normalized counts for the variable genes are scaled, that is, the mean expression across cells becomes 0 and the variance across cells is 1. This step is a standard step prior to dimensional reduction techniques.</p>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb61"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb61-1"><a href="#cb61-1" aria-hidden="true" tabindex="-1"></a>seu_obj_filtered <span class="ot">&lt;-</span> <span class="fu">ScaleData</span>(seu_obj_filtered,</span>
+<span id="cb61-2"><a href="#cb61-2" aria-hidden="true" tabindex="-1"></a>                              <span class="at">features =</span> <span class="fu">VariableFeatures</span>(<span class="at">object =</span> seu_obj_filtered))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stderr">
+<pre><code>Centering and scaling data matrix</code></pre>
+</div>
+</div>
+</section>
+<section id="dimensionality-reduction" class="level3">
+<h3 class="anchored" data-anchor-id="dimensionality-reduction">Dimensionality Reduction</h3>
+<p>To visualize the data in an UMAP plot later on, linear dimensional reduction, PCA, is performed.</p>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb63"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb63-1"><a href="#cb63-1" aria-hidden="true" tabindex="-1"></a>seu_obj_filtered <span class="ot">&lt;-</span> <span class="fu">RunPCA</span>(seu_obj_filtered,</span>
+<span id="cb63-2"><a href="#cb63-2" aria-hidden="true" tabindex="-1"></a>                           <span class="at">features =</span> <span class="fu">VariableFeatures</span>(<span class="at">object =</span> seu_obj_filtered))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stderr">
+<pre><code>PC_ 1 
+Positive:  Cd74, Ccl5, Ly6a, Gzma, Cdr2l, Gm8773, Gm3336, Gm156, Col24a1, Map3k20 
+       Fkbp11, Dcaf12l1, Ifitm1, Cd63, Ntf5, Trbv31, Gm31834, Ttr, Gm15860, 1700028J19Rik 
+       Cdh17, Gm8739, Mmp9, Tiam2, Cetn4, Pdzk1, Apoe, Adra2c, Klf5, Fabp3 
+Negative:  Pabpc1, Sub1, Cox6c, Dock2, S100a13, Rps26, Crip1, S100a11, Hexb, Gm11683 
+       Ucp2, Txnip, Sec61g, Gapdh, Lgals1, Mir142hg, Lsp1, Fosb, S100a10, Tubb5 
+       Ptprc, Cd52, Selenop, Arhgap15, Ndufa1, Maf, Cd48, CAAA01147332.1, Trbc2, Itk 
+PC_ 2 
+Positive:  Ccl5, Nkg7, Gm2682, Lck, Prkch, Ly6c2, Gramd3, Ms4a4b, Klrd1, Sell 
+       Xcl1, Fcer1g, Cd28, Gimap6, Ctla2a, Cd27, Cd2, Ugcg, Sidt1, Aff3 
+       Fyb, Themis, Gimap7, Itga4, Ifitm10, Ctsw, Klre1, Cd7, Ifng, Klf2 
+Negative:  Trdv4, Rorc, Tmem176b, Cd163l1, Il17a, Tmem176a, Capg, Tcrg-V6, S100a4, Blk 
+       S100a6, Serpinb1a, Ckb, Il23r, Ramp1, Actn2, Il1r1, Selenop, Ltb4r1, Cxcr6 
+       Maf, Rora, Ccr2, Abi3bp, Tmem64, Aqp3, Gpx1, Smox, Ly6g5b, Kcnk1 
+PC_ 3 
+Positive:  Zbtb20, Tox, Auts2, Clnk, Igf1r, Cd163l1, Large1, Trdv4, St6galnac3, Pard3 
+       Rasgef1b, Tnfsf11, Rbpms2, Fstl4, Fosb, Slc9a9, Ablim3, Frmd4a, Fgf13, Cdh10 
+       Jun, Map7, Tcrg-V6, Cap2, Pde3b, Rabgap1l, Tnik, Frmd5, Rnf150, Nav2 
+Negative:  Lgals3, Trdv2-2, 5830411N06Rik, Tppp3, Ggt1, Acsbg1, Itgb1, Glipr2, Cd48, Gzmb 
+       Crip1, Cdc25b, Cd7, Rom1, Ly6a, Lgals1, Vim, Tcrg-V4, Rasgrp2, Pltp 
+       Ctsa, Actg1, Myadm, Cryba4, Ms4a4b, 1500009L16Rik, Gna15, Myo1g, Gm45552, Dtx1 
+PC_ 4 
+Positive:  Ccr7, Aff3, S1pr1, Gm8369, Dtx1, Rasgrp2, Tcf7, Fam169b, Klf3, Cmah 
+       Plaur, Cd8b1, Dgka, Klf2, Nsg2, Sell, Smc4, Adk, Nr4a1, Sox4 
+       Myb, Lef1, Ripor2, Themis, Dusp10, 5830411N06Rik, Patj, Sidt1, Il6ra, Satb1 
+Negative:  Xcl1, Fcer1g, Klre1, Itga1, Tyrobp, Zfp683, Klra1, Ctsw, Klrb1c, Ccl4 
+       Fgl2, Cd160, Gimap7, Fasl, Nkg7, Hopx, Ncr1, Litaf, Arsb, Entpd1 
+       Sulf2, Gzmb, Ccl5, Chn2, Cxcr3, Ctla2a, Ifng, Ifitm10, Padi2, Klrd1 
+PC_ 5 
+Positive:  Isg15, Ifit3, Ifit1, Usp18, Ccr7, Ifi47, Ifi208, Rsad2, Trdv4, Ifi27l2a 
+       Rtp4, Tcrg-V6, Ifi209, Tmsb10, Jun, Irf7, Slfn5, Gm8369, Rps26, Nsg2 
+       Sell, Xaf1, Klf4, Hspa1b, Bst2, Ighm, Parp9, Trim30a, Dusp1, Zbp1 
+Negative:  Lgals3, 5830411N06Rik, Tppp3, Itgb1, Atxn1, Ern1, Map3k5, Srgap3, Abi3bp, Akt3 
+       Nebl, Trdv2-2, Ggt1, Acsbg1, Gnaq, Nptn, Diaph3, Bmpr2, Runx2, Exoc4 
+       Slamf1, Lrba, Ptpn4, Itga1, Spag9, Ppp1r12b, Rfx3, Trerf1, Rap1gap2, Zeb2 </code></pre>
+</div>
+<div class="sourceCode cell-code" id="cb65"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb65-1"><a href="#cb65-1" aria-hidden="true" tabindex="-1"></a><span class="fu">ElbowPlot</span>(seu_obj_filtered, <span class="at">reduction =</span> <span class="st">"pca"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output-display">
+<p><img src="preprocessing_files/figure-html/unnamed-chunk-36-1.png" class="img-fluid" width="672"></p>
+</div>
+</div>
+<p>From the elbow plot, we should be fine with using above 20 dimensions.</p>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb66"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb66-1"><a href="#cb66-1" aria-hidden="true" tabindex="-1"></a>seu_obj_filtered <span class="ot">&lt;-</span> <span class="fu">RunUMAP</span>(seu_obj_filtered, <span class="at">dims =</span> <span class="dv">1</span><span class="sc">:</span><span class="dv">30</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stderr">
+<pre><code>Warning: The default method for RunUMAP has changed from calling Python UMAP via reticulate to the R-native UWOT using the cosine metric
+To use Python UMAP via reticulate, set umap.method to 'umap-learn' and metric to 'correlation'
+This message will be shown once per session</code></pre>
+</div>
+<div class="cell-output cell-output-stderr">
+<pre><code>15:16:46 UMAP embedding parameters a = 0.9922 b = 1.112</code></pre>
+</div>
+<div class="cell-output cell-output-stderr">
+<pre><code>Found more than one class "dist" in cache; using the first, from namespace 'spam'</code></pre>
+</div>
+<div class="cell-output cell-output-stderr">
+<pre><code>Also defined by 'BiocGenerics'</code></pre>
+</div>
+<div class="cell-output cell-output-stderr">
+<pre><code>15:16:46 Read 5961 rows and found 30 numeric columns</code></pre>
+</div>
+<div class="cell-output cell-output-stderr">
+<pre><code>15:16:46 Using Annoy for neighbor search, n_neighbors = 30</code></pre>
+</div>
+<div class="cell-output cell-output-stderr">
+<pre><code>Found more than one class "dist" in cache; using the first, from namespace 'spam'</code></pre>
+</div>
+<div class="cell-output cell-output-stderr">
+<pre><code>Also defined by 'BiocGenerics'</code></pre>
+</div>
+<div class="cell-output cell-output-stderr">
+<pre><code>15:16:46 Building Annoy index with metric = cosine, n_trees = 50</code></pre>
+</div>
+<div class="cell-output cell-output-stderr">
+<pre><code>0%   10   20   30   40   50   60   70   80   90   100%</code></pre>
+</div>
+<div class="cell-output cell-output-stderr">
+<pre><code>[----|----|----|----|----|----|----|----|----|----|</code></pre>
+</div>
+<div class="cell-output cell-output-stderr">
+<pre><code>**************************************************|
+15:16:47 Writing NN index file to temp file /var/folders/_n/4x__tzb124l31djjhrhtv5s80000gn/T//Rtmp9Q30cl/file77372d472c30
+15:16:47 Searching Annoy index using 1 thread, search_k = 3000
+15:16:49 Annoy recall = 100%
+15:16:50 Commencing smooth kNN distance calibration using 1 thread with target n_neighbors = 30
+15:16:52 Initializing from normalized Laplacian + noise (using RSpectra)
+15:16:52 Commencing optimization for 500 epochs, with 277312 positive edges
+15:17:02 Optimization finished</code></pre>
+</div>
+</div>
+</section>
+<section id="unmarked-doublets" class="level3">
+<h3 class="anchored" data-anchor-id="unmarked-doublets">Unmarked Doublets</h3>
+<p>We convert the Seurat object to a sce object and save the variable features to be used for doublet detection.</p>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb79"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb79-1"><a href="#cb79-1" aria-hidden="true" tabindex="-1"></a>sce <span class="ot">&lt;-</span> <span class="fu">as.SingleCellExperiment</span>(seu_obj_filtered,</span>
+<span id="cb79-2"><a href="#cb79-2" aria-hidden="true" tabindex="-1"></a>                               <span class="at">assay =</span> <span class="st">"RNA"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<p>For each cell, we calculate the proportion of its nearest neighbors that are known doublets (inter-sample doublets) within each experiment. Intra-sample doublets should have high proportions under the assumption that their gene expression profiles are similar to inter-sample doublets.</p>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb80"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb80-1"><a href="#cb80-1" aria-hidden="true" tabindex="-1"></a>sce<span class="sc">$</span>doublet <span class="ot">&lt;-</span> sce<span class="sc">$</span>hto_class <span class="sc">==</span> <span class="st">"Doublet"</span></span>
+<span id="cb80-2"><a href="#cb80-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb80-3"><a href="#cb80-3" aria-hidden="true" tabindex="-1"></a>doublet_pred <span class="ot">&lt;-</span> <span class="fu">c</span>()</span>
+<span id="cb80-4"><a href="#cb80-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb80-5"><a href="#cb80-5" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> (i <span class="cf">in</span> <span class="dv">1</span><span class="sc">:</span>exp_numb){</span>
+<span id="cb80-6"><a href="#cb80-6" aria-hidden="true" tabindex="-1"></a>  exp_sce <span class="ot">&lt;-</span> sce[, sce<span class="sc">$</span>experiment <span class="sc">==</span> exp_label[i]]</span>
+<span id="cb80-7"><a href="#cb80-7" aria-hidden="true" tabindex="-1"></a>  </span>
+<span id="cb80-8"><a href="#cb80-8" aria-hidden="true" tabindex="-1"></a>  doublets <span class="ot">&lt;-</span> <span class="fu">recoverDoublets</span>(exp_sce,</span>
+<span id="cb80-9"><a href="#cb80-9" aria-hidden="true" tabindex="-1"></a>                              <span class="at">use.dimred =</span> <span class="st">"PCA"</span>,</span>
+<span id="cb80-10"><a href="#cb80-10" aria-hidden="true" tabindex="-1"></a>                              <span class="at">doublets =</span> exp_sce<span class="sc">$</span>doublet,</span>
+<span id="cb80-11"><a href="#cb80-11" aria-hidden="true" tabindex="-1"></a>                              <span class="at">samples =</span> <span class="fu">c</span>(<span class="fu">table</span>(exp_sce<span class="sc">$</span>replicate)))</span>
+<span id="cb80-12"><a href="#cb80-12" aria-hidden="true" tabindex="-1"></a>  </span>
+<span id="cb80-13"><a href="#cb80-13" aria-hidden="true" tabindex="-1"></a>  <span class="fu">rownames</span>(doublets) <span class="ot">&lt;-</span> <span class="fu">colnames</span>(exp_sce)</span>
+<span id="cb80-14"><a href="#cb80-14" aria-hidden="true" tabindex="-1"></a>  doublet_pred <span class="ot">&lt;-</span> <span class="fu">rbind</span>(doublet_pred, doublets)</span>
+<span id="cb80-15"><a href="#cb80-15" aria-hidden="true" tabindex="-1"></a>}</span>
+<span id="cb80-16"><a href="#cb80-16" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb80-17"><a href="#cb80-17" aria-hidden="true" tabindex="-1"></a>pred <span class="ot">&lt;-</span> doublet_pred<span class="sc">$</span>predicted</span>
+<span id="cb80-18"><a href="#cb80-18" aria-hidden="true" tabindex="-1"></a><span class="fu">names</span>(pred) <span class="ot">&lt;-</span> <span class="fu">rownames</span>(doublet_pred)</span>
+<span id="cb80-19"><a href="#cb80-19" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb80-20"><a href="#cb80-20" aria-hidden="true" tabindex="-1"></a>seu_obj_filtered <span class="ot">&lt;-</span> <span class="fu">AddMetaData</span>(<span class="at">object =</span> seu_obj_filtered,</span>
+<span id="cb80-21"><a href="#cb80-21" aria-hidden="true" tabindex="-1"></a>                                <span class="at">metadata =</span> pred,</span>
+<span id="cb80-22"><a href="#cb80-22" aria-hidden="true" tabindex="-1"></a>                                <span class="at">col.name =</span> <span class="st">"pred"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<p>We visualize the results.</p>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb81"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb81-1"><a href="#cb81-1" aria-hidden="true" tabindex="-1"></a>seu_obj_filtered<span class="sc">$</span>doublet <span class="ot">&lt;-</span> <span class="fu">rep</span>(<span class="st">"Singlet"</span>, <span class="fu">dim</span>(seu_obj_filtered)[<span class="dv">2</span>])</span>
+<span id="cb81-2"><a href="#cb81-2" aria-hidden="true" tabindex="-1"></a>seu_obj_filtered<span class="sc">$</span>doublet[seu_obj_filtered<span class="sc">$</span>hto_class <span class="sc">==</span> <span class="st">"Doublet"</span>] <span class="ot">&lt;-</span> <span class="st">"Inter-sample doublet"</span></span>
+<span id="cb81-3"><a href="#cb81-3" aria-hidden="true" tabindex="-1"></a>seu_obj_filtered<span class="sc">$</span>doublet[seu_obj_filtered<span class="sc">$</span>pred] <span class="ot">&lt;-</span> <span class="st">"Intra-sample doublet"</span></span>
+<span id="cb81-4"><a href="#cb81-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb81-5"><a href="#cb81-5" aria-hidden="true" tabindex="-1"></a><span class="fu">DimPlot</span>(seu_obj_filtered, </span>
+<span id="cb81-6"><a href="#cb81-6" aria-hidden="true" tabindex="-1"></a>        <span class="at">group.by =</span> <span class="st">"doublet"</span>,</span>
+<span id="cb81-7"><a href="#cb81-7" aria-hidden="true" tabindex="-1"></a>        <span class="at">cols =</span> <span class="fu">c</span>(<span class="st">"#CC3333"</span>, <span class="st">"#003399"</span>, <span class="st">"#999999"</span>),</span>
+<span id="cb81-8"><a href="#cb81-8" aria-hidden="true" tabindex="-1"></a>        <span class="at">pt.size =</span> <span class="dv">1</span>) <span class="sc">+</span> </span>
+<span id="cb81-9"><a href="#cb81-9" aria-hidden="true" tabindex="-1"></a>  <span class="fu">labs</span>(<span class="at">title =</span> <span class="st">""</span>) <span class="sc">+</span> </span>
+<span id="cb81-10"><a href="#cb81-10" aria-hidden="true" tabindex="-1"></a>  <span class="fu">xlab</span>(<span class="st">"UMAP1"</span>) <span class="sc">+</span></span>
+<span id="cb81-11"><a href="#cb81-11" aria-hidden="true" tabindex="-1"></a>  <span class="fu">ylab</span>(<span class="st">"UMAP2"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output-display">
+<p><img src="preprocessing_files/figure-html/unnamed-chunk-40-1.png" class="img-fluid" width="672"></p>
+</div>
+<div class="sourceCode cell-code" id="cb82"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb82-1"><a href="#cb82-1" aria-hidden="true" tabindex="-1"></a><span class="fu">ggsave</span>(<span class="at">filename =</span> <span class="st">"doublets.png"</span>,</span>
+<span id="cb82-2"><a href="#cb82-2" aria-hidden="true" tabindex="-1"></a>       <span class="at">path =</span> result_path,</span>
+<span id="cb82-3"><a href="#cb82-3" aria-hidden="true" tabindex="-1"></a>       <span class="at">width =</span> <span class="dv">10</span>,</span>
+<span id="cb82-4"><a href="#cb82-4" aria-hidden="true" tabindex="-1"></a>       <span class="at">height =</span> <span class="dv">6</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<p>The intra- and inter-sample doublet are removed from the final filtered data set. The negative cells are removed as well.</p>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb83"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb83-1"><a href="#cb83-1" aria-hidden="true" tabindex="-1"></a>seu_obj_filtered <span class="ot">&lt;-</span> <span class="fu">subset</span>(seu_obj_filtered,</span>
+<span id="cb83-2"><a href="#cb83-2" aria-hidden="true" tabindex="-1"></a>                           <span class="at">subset =</span> doublet <span class="sc">==</span> <span class="st">"Singlet"</span> <span class="sc">&amp;</span> hto_class <span class="sc">==</span> <span class="st">"Singlet"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<p>The classification of the cells are now irrelevant, as all cells are thought to be singlets. Thus, this metadata is removed before the filtered Seurat object is saved. The HTO assay will no longer be included.</p>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb84"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb84-1"><a href="#cb84-1" aria-hidden="true" tabindex="-1"></a>seu_obj_filtered<span class="sc">$</span>hto_class  <span class="ot">&lt;-</span> <span class="cn">NULL</span></span>
+<span id="cb84-2"><a href="#cb84-2" aria-hidden="true" tabindex="-1"></a>seu_obj_filtered<span class="sc">$</span>pred       <span class="ot">&lt;-</span> <span class="cn">NULL</span></span>
+<span id="cb84-3"><a href="#cb84-3" aria-hidden="true" tabindex="-1"></a>seu_obj_filtered<span class="sc">$</span>doublet    <span class="ot">&lt;-</span> <span class="cn">NULL</span></span>
+<span id="cb84-4"><a href="#cb84-4" aria-hidden="true" tabindex="-1"></a>seu_obj_filtered<span class="sc">@</span>assays<span class="sc">$</span>HTO <span class="ot">&lt;-</span> <span class="cn">NULL</span></span>
+<span id="cb84-5"><a href="#cb84-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb84-6"><a href="#cb84-6" aria-hidden="true" tabindex="-1"></a><span class="fu">saveRDS</span>(seu_obj_filtered, </span>
+<span id="cb84-7"><a href="#cb84-7" aria-hidden="true" tabindex="-1"></a>        <span class="at">file =</span> <span class="st">"data/seurat_data/seu_obj_filtered.rds"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+</section>
+</section>
+
+</main>
+<!-- /main column -->
+<script id="quarto-html-after-body" type="application/javascript">
+window.document.addEventListener("DOMContentLoaded", function (event) {
+  const toggleBodyColorMode = (bsSheetEl) => {
+    const mode = bsSheetEl.getAttribute("data-mode");
+    const bodyEl = window.document.querySelector("body");
+    if (mode === "dark") {
+      bodyEl.classList.add("quarto-dark");
+      bodyEl.classList.remove("quarto-light");
+    } else {
+      bodyEl.classList.add("quarto-light");
+      bodyEl.classList.remove("quarto-dark");
+    }
+  }
+  const toggleBodyColorPrimary = () => {
+    const bsSheetEl = window.document.querySelector("link#quarto-bootstrap");
+    if (bsSheetEl) {
+      toggleBodyColorMode(bsSheetEl);
+    }
+  }
+  toggleBodyColorPrimary();  
+  const icon = "";
+  const anchorJS = new window.AnchorJS();
+  anchorJS.options = {
+    placement: 'right',
+    icon: icon
+  };
+  anchorJS.add('.anchored');
+  const isCodeAnnotation = (el) => {
+    for (const clz of el.classList) {
+      if (clz.startsWith('code-annotation-')) {                     
+        return true;
+      }
+    }
+    return false;
+  }
+  const clipboard = new window.ClipboardJS('.code-copy-button', {
+    text: function(trigger) {
+      const codeEl = trigger.previousElementSibling.cloneNode(true);
+      for (const childEl of codeEl.children) {
+        if (isCodeAnnotation(childEl)) {
+          childEl.remove();
+        }
+      }
+      return codeEl.innerText;
+    }
+  });
+  clipboard.on('success', function(e) {
+    // button target
+    const button = e.trigger;
+    // don't keep focus
+    button.blur();
+    // flash "checked"
+    button.classList.add('code-copy-button-checked');
+    var currentTitle = button.getAttribute("title");
+    button.setAttribute("title", "Copied!");
+    let tooltip;
+    if (window.bootstrap) {
+      button.setAttribute("data-bs-toggle", "tooltip");
+      button.setAttribute("data-bs-placement", "left");
+      button.setAttribute("data-bs-title", "Copied!");
+      tooltip = new bootstrap.Tooltip(button, 
+        { trigger: "manual", 
+          customClass: "code-copy-button-tooltip",
+          offset: [0, -8]});
+      tooltip.show();    
+    }
+    setTimeout(function() {
+      if (tooltip) {
+        tooltip.hide();
+        button.removeAttribute("data-bs-title");
+        button.removeAttribute("data-bs-toggle");
+        button.removeAttribute("data-bs-placement");
+      }
+      button.setAttribute("title", currentTitle);
+      button.classList.remove('code-copy-button-checked');
+    }, 1000);
+    // clear code selection
+    e.clearSelection();
+  });
+  function tippyHover(el, contentFn) {
+    const config = {
+      allowHTML: true,
+      content: contentFn,
+      maxWidth: 500,
+      delay: 100,
+      arrow: false,
+      appendTo: function(el) {
+          return el.parentElement;
+      },
+      interactive: true,
+      interactiveBorder: 10,
+      theme: 'quarto',
+      placement: 'bottom-start'
+    };
+    window.tippy(el, config); 
+  }
+  const noterefs = window.document.querySelectorAll('a[role="doc-noteref"]');
+  for (var i=0; i<noterefs.length; i++) {
+    const ref = noterefs[i];
+    tippyHover(ref, function() {
+      // use id or data attribute instead here
+      let href = ref.getAttribute('data-footnote-href') || ref.getAttribute('href');
+      try { href = new URL(href).hash; } catch {}
+      const id = href.replace(/^#\/?/, "");
+      const note = window.document.getElementById(id);
+      return note.innerHTML;
+    });
+  }
+      let selectedAnnoteEl;
+      const selectorForAnnotation = ( cell, annotation) => {
+        let cellAttr = 'data-code-cell="' + cell + '"';
+        let lineAttr = 'data-code-annotation="' +  annotation + '"';
+        const selector = 'span[' + cellAttr + '][' + lineAttr + ']';
+        return selector;
+      }
+      const selectCodeLines = (annoteEl) => {
+        const doc = window.document;
+        const targetCell = annoteEl.getAttribute("data-target-cell");
+        const targetAnnotation = annoteEl.getAttribute("data-target-annotation");
+        const annoteSpan = window.document.querySelector(selectorForAnnotation(targetCell, targetAnnotation));
+        const lines = annoteSpan.getAttribute("data-code-lines").split(",");
+        const lineIds = lines.map((line) => {
+          return targetCell + "-" + line;
+        })
+        let top = null;
+        let height = null;
+        let parent = null;
+        if (lineIds.length > 0) {
+            //compute the position of the single el (top and bottom and make a div)
+            const el = window.document.getElementById(lineIds[0]);
+            top = el.offsetTop;
+            height = el.offsetHeight;
+            parent = el.parentElement.parentElement;
+          if (lineIds.length > 1) {
+            const lastEl = window.document.getElementById(lineIds[lineIds.length - 1]);
+            const bottom = lastEl.offsetTop + lastEl.offsetHeight;
+            height = bottom - top;
+          }
+          if (top !== null && height !== null && parent !== null) {
+            // cook up a div (if necessary) and position it 
+            let div = window.document.getElementById("code-annotation-line-highlight");
+            if (div === null) {
+              div = window.document.createElement("div");
+              div.setAttribute("id", "code-annotation-line-highlight");
+              div.style.position = 'absolute';
+              parent.appendChild(div);
+            }
+            div.style.top = top - 2 + "px";
+            div.style.height = height + 4 + "px";
+            let gutterDiv = window.document.getElementById("code-annotation-line-highlight-gutter");
+            if (gutterDiv === null) {
+              gutterDiv = window.document.createElement("div");
+              gutterDiv.setAttribute("id", "code-annotation-line-highlight-gutter");
+              gutterDiv.style.position = 'absolute';
+              const codeCell = window.document.getElementById(targetCell);
+              const gutter = codeCell.querySelector('.code-annotation-gutter');
+              gutter.appendChild(gutterDiv);
+            }
+            gutterDiv.style.top = top - 2 + "px";
+            gutterDiv.style.height = height + 4 + "px";
+          }
+          selectedAnnoteEl = annoteEl;
+        }
+      };
+      const unselectCodeLines = () => {
+        const elementsIds = ["code-annotation-line-highlight", "code-annotation-line-highlight-gutter"];
+        elementsIds.forEach((elId) => {
+          const div = window.document.getElementById(elId);
+          if (div) {
+            div.remove();
+          }
+        });
+        selectedAnnoteEl = undefined;
+      };
+      // Attach click handler to the DT
+      const annoteDls = window.document.querySelectorAll('dt[data-target-cell]');
+      for (const annoteDlNode of annoteDls) {
+        annoteDlNode.addEventListener('click', (event) => {
+          const clickedEl = event.target;
+          if (clickedEl !== selectedAnnoteEl) {
+            unselectCodeLines();
+            const activeEl = window.document.querySelector('dt[data-target-cell].code-annotation-active');
+            if (activeEl) {
+              activeEl.classList.remove('code-annotation-active');
+            }
+            selectCodeLines(clickedEl);
+            clickedEl.classList.add('code-annotation-active');
+          } else {
+            // Unselect the line
+            unselectCodeLines();
+            clickedEl.classList.remove('code-annotation-active');
+          }
+        });
+      }
+  const findCites = (el) => {
+    const parentEl = el.parentElement;
+    if (parentEl) {
+      const cites = parentEl.dataset.cites;
+      if (cites) {
+        return {
+          el,
+          cites: cites.split(' ')
+        };
+      } else {
+        return findCites(el.parentElement)
+      }
+    } else {
+      return undefined;
+    }
+  };
+  var bibliorefs = window.document.querySelectorAll('a[role="doc-biblioref"]');
+  for (var i=0; i<bibliorefs.length; i++) {
+    const ref = bibliorefs[i];
+    const citeInfo = findCites(ref);
+    if (citeInfo) {
+      tippyHover(citeInfo.el, function() {
+        var popup = window.document.createElement('div');
+        citeInfo.cites.forEach(function(cite) {
+          var citeDiv = window.document.createElement('div');
+          citeDiv.classList.add('hanging-indent');
+          citeDiv.classList.add('csl-entry');
+          var biblioDiv = window.document.getElementById('ref-' + cite);
+          if (biblioDiv) {
+            citeDiv.innerHTML = biblioDiv.innerHTML;
+          }
+          popup.appendChild(citeDiv);
+        });
+        return popup.innerHTML;
+      });
+    }
+  }
+});
+</script>
+</div> <!-- /content -->
+
+
+
+</body></html>
