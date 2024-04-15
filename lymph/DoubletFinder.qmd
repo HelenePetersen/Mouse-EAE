@@ -1,0 +1,191 @@
+---
+title: "Untitled"
+format: html
+editor: visual
+---
+
+### Doublet Score
+
+First, the Seurat object with the filtered data is loaded to the environment.
+
+```{r}
+#seu_obj_filtered <- seu_obj_ex_filtered
+seu_obj_filtered <- readRDS(paste(data_path,
+                                           "seurat_data/seu_obj_filtered.rds",
+                                           sep="/"))
+```
+
+We convert the seurat object to a sce object and save the variable features to be used for doublet detection.
+
+```{r}
+seu_obj_filtered[["RNA"]] <- as(object = seu_obj_filtered[["RNA"]], Class = "Assay")
+
+sce <- as.SingleCellExperiment(seu_obj_filtered)
+
+sce_top_var <- VariableFeatures(seu_obj_filtered)
+```
+
+Doublet scores are computed with computeDoubletDensity described in
+
+<https://rdrr.io/github/plger/scDblFinder/man/computeDoubletDensity.html>
+
+The procedure is as follows:
+
+1)  A number of doublets (controlled by the parameter "niters" computeDoubletDensity) are simulated by adding the count vectors for two randomly chosen cells in the count matrix.
+
+2)  In a low-dimensional space after a PCA on the log-normalized expression matrix, the density of neighboring artificial doublets for each cell is computed and compared to the density of neighboring original cells to yield a doublet score.
+
+```{r}
+sce_dbl_dens <- computeDoubletDensity(sce,
+                                      subset.row = sce_top_var,
+                                      d = ncol(reducedDim(sce)))
+
+sce$DoubletScore <- sce_dbl_dens
+```
+
+We visualize the cells in a UMAP plot colored by the doublet score.
+
+```{r}
+umapplot_doubletscore <- plotUMAP(sce, colour_by = "DoubletScore")
+
+ggsave(filename = "umapplot_doubletscore.png",
+         path = results_path,
+         plot = umapplot_doubletscore)
+
+umapplot_doubletscore
+```
+
+As expected, cells with a high doublet score tend to cluster together.
+
+### Doublet Thresholding
+
+We use doubletThresholding to establish a threshold for the doublet score to call the doublets.
+
+```{r}
+sce_dbl_calls <- doubletThresholding(data.frame(score = sce_dbl_dens),
+                                              method ="griffiths",
+                                              returnType ="call")
+
+print(paste("Singlets: ", 
+            summary(sce_dbl_calls)[1], 
+            " (",
+            round(summary(sce_dbl_calls)[1]/length(sce_dbl_calls) * 100, 
+                  digits = 2),
+            "%)",
+      sep = ""))
+
+print(paste("Doublets: ", 
+            summary(sce_dbl_calls)[2], 
+            " (",
+            round(summary(sce_dbl_calls)[2]/length(sce_dbl_calls) * 100, 
+                  digits = 2),
+            "%)",
+      sep = ""))
+```
+
+The amount of doublets seems reasonable. We add the classification to the metadata.
+
+```{r}
+names(sce_dbl_calls) <- colnames(sce)
+
+seu_obj_filtered <- AddMetaData(object = seu_obj_filtered,
+                                         metadata = sce_dbl_calls,
+                                         col.name = "doublet_call")
+```
+
+Let us look at the results.
+
+```{r}
+cell_status <- seu_obj_filtered@meta.data
+cell_status$HTO_classification.global <- factor(cell_status$HTO_classification.global,
+                                                         levels = c("Singlet", "Doublet", "Negative"))
+cell_status$doublet_call <- factor(cell_status$doublet_call,
+                                            levels = c("singlet", "doublet"),
+                                            labels = c("Singlet", "Doublet"))
+
+label(cell_status$HTO_classification.global) <- "HTODemux Classification"   
+label(cell_status$doublet_call) <- "scDblFinder Classification"   
+
+table1(data = cell_status, 
+       ~ doublet_call | HTO_classification.global,
+       caption = "HTODemux Classification")
+```
+
+43.1% of the cells being identified as doublets by HTODemux are classified as singlets from doublet identification by the scDblFinder. Let us see the results for each experiment.
+
+```{r}
+table1(data = cell_status, 
+       ~ doublet_call + HTO_classification.global | timepoint,
+       caption = "Lane")
+```
+
+For the both classifications, the rate of doublets pr. lane is almost the same, so the doublets seem to be somewhat distributed equally across lanes.
+
+```{r}
+cell_status$id <- factor(cell_status$id)
+label(cell_status$id) <- "ID"  
+
+table1(data = cell_status, 
+       ~ id | HTO_classification.global)
+```
+
+We choose to remove the doublets identified by the doublet score.
+
+```{r}
+seu_obj_preprocessed <- subset(seu_obj_filtered,
+                               subset = doublet_call == "singlet")
+
+
+print(paste("Genes removed: ", 
+            dim(seu_obj_filtered)[1] - dim(seu_obj_preprocessed)[1], 
+            " (",
+            round((dim(seu_obj_filtered)[1] - dim(seu_obj_preprocessed)[1])/dim(seu_obj_filtered)[1] * 100, 
+                  digits = 2),
+            "%)",
+      sep = ""))
+
+print(paste("Cells removed: ", 
+            dim(seu_obj_filtered)[2] - dim(seu_obj_preprocessed)[2], 
+            " (",
+            round((dim(seu_obj_filtered)[2] - dim(seu_obj_preprocessed)[2])/dim(seu_obj_filtered)[2] * 100, 
+                  digits = 2),
+            "%)",
+      sep = ""))
+```
+
+We look how many at the numbers for the HTO classification again.
+
+```{r}
+remain <- table(seu_obj_preprocessed@meta.data$HTO_classification.global)
+
+remain
+print(paste("Doublets and negatives now corresponding to ",
+            round(sum(remain[1:2])/sum(remain)*100, 2), 
+            "%",
+            sep = ""))
+```
+
+Let us inspect the heatmap ones more.
+
+```{r}
+heatmap_post_filtering <- HTOHeatmap(seu_obj_preprocessed,
+                                     assay = "HTO",
+                                     ncells = 10000) +
+  ggtitle("HTO identity") +
+  theme(plot.title = element_text(hjust = 0.5))
+
+ggsave(filename = "heatmap_post_filtering.png",
+         path = results_path,
+         plot = heatmap_post_filtering)
+
+heatmap_post_filtering
+```
+
+The final Seurat object is saved.
+
+```{r}
+saveRDS(seu_obj_preprocessed, 
+        file = paste(data_path,
+                     "seurat_data/seu_obj_preprocessed.rds",
+                     sep = "/"))
+```

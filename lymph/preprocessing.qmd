@@ -43,7 +43,7 @@ results_path <- "o:/Public/T-Cell-Signalling-and-Development/VB Lab/10x_data/Spe
 
 ```{r}
 project <- "10xRNA_M-EAE-gdT"
-experiment_id <- list("LN0", "LN11", "LN21")
+experiment_id <- list("LN0", "LN11", "LN21", "NEO")
 experiment_num <- length(experiment_id)
 ```
 
@@ -75,13 +75,14 @@ seu_obj <- CreateSeuratObject(counts = data_10X$`Gene Expression`[ , joined_cell
 seu_obj <- RenameIdents(object = seu_obj,
                                 "1" = experiment_id[[1]],
                                 "2" = experiment_id[[2]],
-                                "3" = experiment_id[[3]])
+                                "3" = experiment_id[[3]],
+                        "4" = experiment_id[[4]])
 seu_obj@meta.data$timepoint <- Idents(seu_obj)
 
 seu_obj
 ```
 
-The data consists of in total 29458 cells expressing together 18982 genes. The sample information is given by the cell identity classes and save in the metadata as well.
+The data consists of in total 41873 cells expressing together 20290 genes. The sample information is given by the cell identity classes and save in the metadata as well.
 
 ```{r}
 table(seu_obj@meta.data$timepoint)
@@ -188,7 +189,7 @@ seu_obj[["replicate"]] <- str_split(seu_obj@meta.data$HTO_maxID,
 
 ```
 
-We group cells based on the max HTO signal. When inspecting the ridgeline plot we some negatives for both LN0, LN11 and LN21 expressing HTOs for replicate 2 and 3.
+We group cells based on the max HTO signal. When inspecting the ridgeline plot we some negatives for both LN0, LN11, LN21 and NEO expressing HTOs for replicate 2 and 3.
 
 ```{r, message = FALSE}
 Idents(seu_obj) <- "hash.ID"
@@ -221,108 +222,11 @@ table1(data = seu_obj@meta.data,
        ~ timepoint + HTO_maxID | HTO_classification.global)
 ```
 
-The negatives are mainly comming from M.rep, but only corresponding to 1% of the data.
-
-**We visualize pairs of HTO signals - this is not corrected for mouse.**
-
-```{r}
-qcPlotScatterHTO <- function(data, feature1, feature2){
-  feature_name1 <- str_split(feature1, pattern = "\\.")
-  feature_name2 <- str_split(feature2, pattern = "\\.")
-  FeatureScatter({{data}}, 
-                 feature1 = paste("hto_", feature1, sep = ""),
-                 feature2 = paste("hto_", feature2, sep = ""),
-                 plot.cor = FALSE) +
-    xlab(paste(feature_name1[[1]][2], " + ", feature_name1[[1]][3])) +
-    ylab(paste(feature_name2[[1]][2], " + ", feature_name2[[1]][3])) + 
-    labs(colour = "HTO Classification") 
-}
-
-scatterplot_CR_baselineVSeval <- qcPlotScatterHTO(melanoma_seu_obj,
-                                                  "Hu.CR.Baseline",
-                                                  "Hu.CR.Eval")
-
-scatterplot_PD_baselineVSeval <- qcPlotScatterHTO(melanoma_seu_obj,
-                                                  "Hu.PD.Baseline",
-                                                  "Hu.PD.Eval")
-
-scatterplot_baseline_crVSpd <- qcPlotScatterHTO(melanoma_seu_obj,
-                                                "Hu.CR.Baseline",
-                                                "Hu.PD.Baseline")
-
-scatterplot_eval_crVSpd <- qcPlotScatterHTO(melanoma_seu_obj, 
-                                            "Hu.CR.Eval", 
-                                            "Hu.PD.Eval")
-
-ggsave(filename = "scatterplot_CR_baselineVSeval.png",
-         path = results_path,
-         plot = scatterplot_CR_baselineVSeval)
-
-ggsave(filename = "scatterplot_PD_baselineVSeval.png",
-         path = results_path,
-         plot = scatterplot_PD_baselineVSeval)
-
-ggsave(filename = "scatterplot_baseline_crVSpd.png",
-         path = results_path,
-         plot = scatterplot_baseline_crVSpd)
-
-ggsave(filename = "scatterplot_eval_crVSpd.png",
-         path = results_path,
-         plot = scatterplot_eval_crVSpd)
-
-scatterplot_CR_baselineVSeval
-```
-
-There are some cells clustering together with doublets for CR + Baseline vs. CR + Eval though they are classified as CR + Baseline. This suggest that additional tools are nescesary for identifying doublets. For PD + Baseline vs. PD + Eval cells are identified as doublets, but they seem to be expressing mainly HTOs from one of the two groups.
-
-```{r}
-scatterplot_PD_baselineVSeval
-```
-
-We compare the number of UMIs for singlets, doublets and negative cells.
-
-```{r}
-Idents(melanoma_seu_obj) <- "HTO_classification.global"
-VlnPlot(melanoma_seu_obj, 
-        features = "nCount_RNA", 
-        pt.size = 0.1,
-        log = TRUE) +
-  xlab("") + 
-  labs(title = "Number of RNA molecules")
-```
-
-As expected, the doublets seem to have more molecules being sequenced.
-
-```{r}
-VlnPlot(melanoma_seu_obj, 
-        features = "nFeature_RNA", 
-        pt.size = 0.1,
-        log = TRUE) +
-  xlab("") + 
-  labs(title = "Number of genes")
-```
-
-Again, the distribution of the number of genes per cell tends to be a bit higher for the doublets than the singlets. The HTO demultiplexing results can also be visualized by the heatmap below.
-
-```{r}
-heatmap_pre_filtering <- HTOHeatmap(melanoma_seu_obj,
-                                    assay = "HTO",
-                                    ncells = 10000) +
-  ggtitle("HTO identity") +
-  theme(plot.title = element_text(hjust = 0.5))
-
-ggsave(filename = "heatmap_pre_filtering.png",
-         path = results_path,
-         plot = heatmap_pre_filtering)
-
-heatmap_pre_filtering
-```
-
-**The above is not corrected for mouse**
+The negatives are mainly coming from NEO and from M.rep2, but only in total 527 negative cells out of 41870 cells.
 
 ### Metadata
 
-The percentage of mitochondrial, ribosomal and hemoglobin content is added.
+The percentage of mitochondrial and ribosomal content is added.
 
 ```{r}
 # Mitochondrial content
@@ -445,6 +349,16 @@ densplot_mole <- qcPlotDens(seu_obj,
                             "Number of molecules", 
                             500, NULL,
                           experiment_id)
+densplot_mito <- qcPlotDens(seu_obj, 
+                            percent_mt, 
+                          "Mitocondrial content (%)", 
+                          NULL, 5,
+                          experiment_id)
+densplot_ribo <- qcPlotDens(seu_obj, 
+                            percent_ribo, 
+                            "Ribosomal content (%)", 
+                            NULL, NULL,
+                          experiment_id)
 
 # Save plots
 vlnplot <- list(vlnplot_gene, vlnplot_mole, vlnplot_mito, vlnplot_ribo)
@@ -465,30 +379,24 @@ for (i in 1:4){
 
 ```{r}
 densplot_gene
+vlnplot_mito
+vlnplot_ribo
 ```
 
 Since the distribution between the experiments are very different, will we make the filtering separately for the number of genes.
 
 ```{r}
-vlnplot_mito
-```
-
-A high mitochondrial content would indicate dying cells, so we will only keep cells with less that 5% mitochondrial content. Since LN11 has very high mitochondrial content will we first filter on this parameter and see how the distribution changes
-
-```{r}
-seu_obj_filtered <- subset(seu_obj,
-                           subset = percent_mt < 5)
-```
-
-```{r}
-seu_obj_LN0 <- subset(seu_obj_filtered,
+seu_obj_LN0 <- subset(seu_obj,
        subset = timepoint == 'LN0')
 
-seu_obj_LN11 <- subset(seu_obj_filtered,
+seu_obj_LN11 <- subset(seu_obj,
        subset = timepoint == 'LN11')
 
-seu_obj_LN21 <- subset(seu_obj_filtered,
+seu_obj_LN21 <- subset(seu_obj,
        subset = timepoint == 'LN21')
+
+seu_obj_NEO <- subset(seu_obj,
+       subset = timepoint == 'NEO')
 
 densplot_gene_LN0 <- qcPlotDens(seu_obj_LN0, 
            nFeature_RNA, 
@@ -508,6 +416,12 @@ densplot_gene_LN21 <- qcPlotDens(seu_obj_LN21,
             400, 3000,
             'LN21')
 
+densplot_gene_NEO <- qcPlotDens(seu_obj_NEO, 
+           nFeature_RNA, 
+           "Number of genes", 
+            400, 5000,
+            'NEO')
+
 densplot_mole_LN0 <- qcPlotDens(seu_obj_LN0,
            nCount_RNA, 
            "Number of molecules", 
@@ -525,6 +439,12 @@ densplot_mole_LN21 <- qcPlotDens(seu_obj_LN21,
            "Number of molecules", 
            500, NULL,
            'LN21')
+
+densplot_mole_NEO <- qcPlotDens(seu_obj_NEO,
+           nCount_RNA, 
+           "Number of molecules", 
+           500, NULL,
+           'NEO')
 
 vlnplot_gene_LN0 <- qcPlotVln(seu_obj_LN0,
                           nFeature_RNA, 
@@ -567,24 +487,24 @@ for (i in 1:experiment_num){
 We take a look at the number of RNA molecules pr. cell vs. the number of genes.
 
 ```{r}
-qcPlotScatter <- function(data, feature1, feature2, feature_name, threshold){
+qcPlotScatter <- function(data, feature1, feature2, feature_name, threshold, col_group, x_limit){
   ggplot(data = {{data}}@meta.data,
          mapping = aes(x = {{feature1}},
                        y = {{feature2}},
-                       colour = orig.ident)) +
+                       colour = {{col_group}})) +
   geom_point(alpha = 0.5) +
   #facet_wrap(~orig.ident) +
   xlab(feature_name[1]) + 
   ylab(feature_name[2]) + 
-  #xlim(0,40000) +
-  labs(title = paste(feature_name[1], "vs.", tolower(feature_name[2]),
-                     sep = " "),
-       colour = "Sample") +
-  scale_colour_discrete(labels = experiment_id) + 
+  xlim(0,x_limit) +
+  #labs(title = paste(feature_name[1], "vs.", tolower(feature_name[2]),
+  #                   sep = " "))+#,
+       #colour = "Sample") +
+  #scale_colour_discrete(labels = experiment_id) + 
   theme_bw() +
-  geom_vline(xintercept = c(threshold[1], threshold[2]),
+  geom_vline(xintercept = c(threshold[1]),
              colour = "#CC3333") +
-  geom_hline(yintercept = c(threshold[3], threshold[4]),
+  geom_hline(yintercept = c(threshold[2], threshold[3]),
              colour = "#CC3333")
 }
 
@@ -592,22 +512,80 @@ scatterplot_LN0 <- qcPlotScatter(seu_obj_LN0,
                              nCount_RNA, 
                              nFeature_RNA, 
                              c("Number of molecules", "Number of genes"), 
-                             c(500, NULL, 500, 3000))
+                             c(500, 400, 3000),
+                             HTO_classification.global,
+                             x_limit = max(seu_obj_LN0@meta.data$nCount_RNA))
 
-scatterplot_LN11 <- qcPlotScatter(seu_obj_LN11, 
+Scatterplot_LN11 <- qcPlotScatter(seu_obj_LN11, 
                              nCount_RNA, 
                              nFeature_RNA, 
                              c("Number of molecules", "Number of genes"), 
-                             c(500, NULL, 500, 5000))
-#ggsave(filename = "scatterplot_LN11_zoomed.png",
- #        path = results_path,
-  #       plot = scatterplot_LN11)
+                             c(500, 400, 5000),
+                             HTO_classification.global,
+                             x_limit = max(seu_obj_LN11@meta.data$nCount_RNA))
 
-scatterplot_LN21 <- qcPlotScatter(seu_obj_LN21, 
+Scatterplot_LN11_zoomed <- qcPlotScatter(seu_obj_LN11, 
                              nCount_RNA, 
                              nFeature_RNA, 
                              c("Number of molecules", "Number of genes"), 
-                             c(500, NULL, 500, 3000))
+                             c(500, 400, 5000),
+                             HTO_classification.global,
+                             x_limit = 30000)
+
+scatterplot_LN11 <- Scatterplot_LN11 + Scatterplot_LN11_zoomed +
+  plot_layout(guides = 'collect') +
+   plot_annotation(title = "LN11 Number of molecules vs. number of genes")
+
+Scatterplot_NEO <- qcPlotScatter(seu_obj_NEO, 
+                             nCount_RNA, 
+                             nFeature_RNA, 
+                             c("Number of molecules", "Number of genes"), 
+                             c(500, 400, 5000),
+                             HTO_classification.global,
+                             x_limit = max(seu_obj_NEO@meta.data$nCount_RNA))
+
+Scatterplot_NEO_zoomed <- qcPlotScatter(seu_obj_NEO, 
+                             nCount_RNA, 
+                             nFeature_RNA, 
+                             c("Number of molecules", "Number of genes"), 
+                             c(500, 400, 5000),
+                             HTO_classification.global,
+                             x_limit = 30000)
+
+scatterplot_NEO <- Scatterplot_NEO + Scatterplot_NEO_zoomed +
+  plot_layout(guides = 'collect') +
+   plot_annotation(title = "NEO Number of molecules vs. number of genes")
+
+scatterplot_LN11_mt_RNA <- qcPlotScatter(seu_obj_LN11, 
+                             percent_mt, 
+                             nFeature_RNA, 
+                             c("Percent mitocondrial", "Number of genes"), 
+                             c(NULL, NULL, NULL),
+                             HTO_classification.global,
+                             x_limit = max(seu_obj_LN11@meta.data$percent_mt))
+
+ggsave(filename = "scatterplot_LN11_mt_RNA",
+         path = results_path,
+         plot = scatterplot_LN11_mt_RNA)
+
+Scatterplot_LN21 <- qcPlotScatter(seu_obj_LN21, 
+                             nCount_RNA, 
+                             nFeature_RNA, 
+                             c("Number of molecules", "Number of genes"), 
+                             c(500, 400, 3000),
+                             HTO_classification.global,
+                             x_limit = max(seu_obj_LN21@meta.data$nCount_RNA))
+Scatterplot_LN21_zoomed <- qcPlotScatter(seu_obj_LN21, 
+                             nCount_RNA, 
+                             nFeature_RNA, 
+                             c("Number of molecules", "Number of genes"), 
+                             c(500, 400, 3000),
+                             HTO_classification.global,
+                             x_limit = 13000)
+scatterplot_LN21 <- Scatterplot_LN21 + Scatterplot_LN21_zoomed +
+  plot_layout(guides = 'collect') +
+   plot_annotation(title = "LN21 Number of molecules vs. number of genes")
+
 
 densplot_gene_experiment <- list(scatterplot_LN0, scatterplot_LN11, scatterplot_LN21)
 scatterplot_name <- paste("scatterplot_", experiment_id, ".png", sep = "")
@@ -620,231 +598,72 @@ for (i in 1:experiment_num){
 
 ```
 
-The number of molecules vs. genes seems to be nicely correlated for LN0 and LN21, but LN11 has high number of transcripts per cell, where the number of genes does not increase in the same manner. Data points in the bottom right corner would indicate low quality cells, where the same genes are being sequenced over and over again. Cells in the top left corner could be doublets resulting in a large number of detected genes. As we do not see any cells in these areas, the data quality overall seem fine. We filter the cells based on our QC metrics. We also remove all ribosomal genes.
+The number of molecules vs. genes seems to be nicely correlated for LN0 and LN21, but LN11 and NEO has a high number of transcripts per cell, where the number of genes does not increase in the same manner. Data points in the bottom right corner would indicate low quality cells, where the same genes are being sequenced over and over again. Cells in the top left corner could be doublets resulting in a large number of detected genes. As we do not see any cells in these areas, the data quality overall seem fine. We filter the cells based on our QC metrics. We also remove all ribosomal genes, to avoid interference with normalization, since these percentages are high in all samples.
+
+A high mitochondrial content would indicate dying cells, so we will only keep cells with less that 5% mitochondrial content as a common cutoff.
 
 ```{r}
-seu_obj_filtered <- seu_obj_filtered[!grepl('^R[sp]l', rownames(seu_obj_filtered)), ]
+seu_obj_filtered <- seu_obj[!grepl('^R[sp]l', rownames(seu_obj)), ]
+seu_obj_filtered <- subset(seu_obj_filtered,
+                          subset = percent_mt < 5)
 
-seu_obj_ex_filtered <- subset(seu_obj_filtered,
-                                    subset = (timepoint == "LN0" & nFeature_RNA > 400 & nFeature_RNA < 2500 
-                                    & nCount_RNA > 500) | (timepoint == "LN11" & nFeature_RNA > 400 & nFeature_RNA < 5000 
-                                    & nCount_RNA > 500) | (timepoint == "LN21" & nFeature_RNA > 400 & nFeature_RNA < 3000 
+seu_obj_filtered <- subset(seu_obj_filtered,
+                                    subset = (timepoint == "LN0" & nFeature_RNA > 400 & nFeature_RNA < 2500
+                                    & nCount_RNA > 500) |
+                                (timepoint == "LN11" & nFeature_RNA > 400 & nFeature_RNA < 5000 
+                                    & nCount_RNA > 500) |
+                                (timepoint == "LN21" & nFeature_RNA > 400 & nFeature_RNA < 3000 
+                                    & nCount_RNA > 500) |
+                                (timepoint == "NEO" & nFeature_RNA > 400 & nFeature_RNA < 5000 
                                     & nCount_RNA > 500))
+seu_obj_filtered[["HTO"]] <- CreateAssayObject(counts = seu_obj@assays$HTO$data[, colnames(seu_obj_filtered)])
 
-seu_obj_ex_filtered[["HTO"]] <- CreateAssayObject(counts = seu_obj@assays$HTO$data[, colnames(seu_obj_ex_filtered)])
-
-seu_obj_ex_filtered
+seu_obj_filtered
 ```
 
 Let us see how much the filtering step removed:
 
 ```{r}
 print(paste("Genes removed: ", 
-            dim(seu_obj)[1] - dim(seu_obj_ex_filtered)[1], 
+            dim(seu_obj)[1] - dim(seu_obj_filtered)[1], 
             " (",
-            round((dim(seu_obj)[1] - dim(seu_obj_ex_filtered)[1])/dim(seu_obj)[1] * 100, 
+            round((dim(seu_obj)[1] - dim(seu_obj_filtered)[1])/dim(seu_obj)[1] * 100, 
                   digits = 2),
             "%)",
       sep = ""))
 
 print(paste("Cells removed: ", 
-            dim(seu_obj)[2] - dim(seu_obj_ex_filtered)[2], 
+            dim(seu_obj)[2] - dim(seu_obj_filtered)[2], 
             " (",
-            round((dim(seu_obj)[2] - dim(seu_obj_ex_filtered)[2])/dim(seu_obj)[2] * 100, 
+            round((dim(seu_obj)[2] - dim(seu_obj_filtered)[2])/dim(seu_obj)[2] * 100, 
                   digits = 2),
             "%)",
       sep = ""))
 ```
 
-## Doublet Identification
+Genes removed: 60 (0.3%)
+Cells removed: 1998 (4.77%)
 
-We wish to identify doublets using the scDblFinder package, which gathers various methods for the detection and handling of doublets. We will use the computeDoubletDensity approach, where we obtain a doublet score for each cell based on the density of simulated doublets around it.
-
-### Normalization
-
-Before doublet detection, we must normalize and find variable features according to the standard Seurat workflow. The counts are normalized by dividing the count for each gene pr. cell by the total counts for that cell and multiplied by a scale factor. This is then log transformed using the natural log.
-
-```{r}
-seu_obj_ex_filtered <- NormalizeData(seu_obj_ex_filtered,
-                                           normalization.method = "LogNormalize",
-                                           scale.factor = 10000)
-```
-
-### Identification of Highly Variable Features
-
-We find a subset of features that exhibit high cell-to-cell variation in the dataset. These genes are thought be the most biological relevant genes, and by focussing on these features the computations will become more efficient in the downstream analysis. We choose to find the 2000 most variable genes, which is the default value for the FindVariableFeatures function.
-
-```{r}
-seu_obj_ex_filtered <- FindVariableFeatures(seu_obj_ex_filtered,
-                                                  selection.method = "vst",
-                                                  nfeatures = 2000)
-```
-
-### Scale Data
-
-The normalized counts for the variable genes are scaled, that is, the mean expression across cells becomes 0 and the variance across cells is 1. This step is a standard step prior to dimensional reduction techniques.
-
-```{r}
-seu_obj_ex_filtered <- ScaleData(seu_obj_ex_filtered,
-                              features = VariableFeatures(object = seu_obj_ex_filtered))
-```
-
-### Dimensionality Reduction
-
-To visualize the data in an UMAP plot later on, linear dimensional reduction, PCA, is performed.
-
-```{r}
-seu_obj_ex_filtered <- RunPCA(seu_obj_ex_filtered,
-                              features = VariableFeatures(object = seu_obj_ex_filtered))
-
-ElbowPlot(seu_obj_ex_filtered, reduction = "pca")
-```
-
-From the elbow plot, we should be fine with using above 20 dimensions.
-
-```{r}
-seu_obj_ex_filtered <- RunUMAP(seu_obj_ex_filtered, dims = 1:30)
-```
-
-The current steps are saved.
-
-```{r}
-saveRDS(seu_obj_ex_filtered, file = paste(data_path,
-                                       "seurat_data/seu_obj_filtered.rds",
-                                       sep = "/"))
-```
-
-### Doublet Score
-
-First, the Seurat object with the filtered data is loaded to the enviroment.
-
-```{r}
-seu_obj_filtered <- readRDS(paste(data_path,
-                                           "seurat_data/seu_obj_filtered.rds",
-                                           sep="/"))
-```
-
-We convert the seurat object to a sce object and save the variable features to be used for doublet detection.
-
-```{r}
-seu_obj_filtered[["RNA"]] <- as(object = seu_obj_filtered[["RNA"]], Class = "Assay")
-
-sce <- as.SingleCellExperiment(seu_obj_filtered)
-
-sce_top_var <- VariableFeatures(seu_obj_filtered)
-```
-
-Doublet scores are computed with computeDoubletDensity described in
-
-<https://rdrr.io/github/plger/scDblFinder/man/computeDoubletDensity.html>
-
-The procedure is as follows:
-
-1)  A number of doublets (controlled by the parameter "niters" computeDoubletDensity) are simulated by adding the count vectors for two randomly chosen cells in the count matrix.
-
-2)  In a low-dimensional space after a PCA on the log-normalized expression matrix, the density of neighboring artificial doublets for each cell is computed and compared to the density of neighboring original cells to yield a doublet score.
-
-```{r}
-sce_dbl_dens <- computeDoubletDensity(sce,
-                                      subset.row = sce_top_var,
-                                      d = ncol(reducedDim(sce)))
-
-sce$DoubletScore <- sce_dbl_dens
-```
-
-We visualize the cells in a UMAP plot colored by the doublet score.
-
-```{r}
-umapplot_doubletscore <- plotUMAP(sce, colour_by = "DoubletScore")
-
-ggsave(filename = "umapplot_doubletscore.png",
-         path = results_path,
-         plot = umapplot_doubletscore)
-
-umapplot_doubletscore
-```
-
-As expected, cells with a high doublet score tend to cluster together.
-
-### Doublet Thresholding
-
-We use doubletThresholding to establish a threshold for the doublet score to call the doublets.
-
-```{r}
-sce_dbl_calls <- doubletThresholding(data.frame(score = sce_dbl_dens),
-                                              method ="griffiths",
-                                              returnType ="call")
-
-print(paste("Singlets: ", 
-            summary(sce_dbl_calls)[1], 
-            " (",
-            round(summary(sce_dbl_calls)[1]/length(sce_dbl_calls) * 100, 
-                  digits = 2),
-            "%)",
-      sep = ""))
-
-print(paste("Doublets: ", 
-            summary(sce_dbl_calls)[2], 
-            " (",
-            round(summary(sce_dbl_calls)[2]/length(sce_dbl_calls) * 100, 
-                  digits = 2),
-            "%)",
-      sep = ""))
-```
-
-The amount of doublets seems reasonable. We add the classification to the metadata.
-
-```{r}
-names(sce_dbl_calls) <- colnames(sce)
-
-seu_obj_filtered <- AddMetaData(object = seu_obj_filtered,
-                                         metadata = sce_dbl_calls,
-                                         col.name = "doublet_call")
-```
-
-Let us look at the results.
-
-```{r}
-cell_status <- seu_obj_filtered@meta.data
-cell_status$HTO_classification.global <- factor(cell_status$HTO_classification.global,
-                                                         levels = c("Singlet", "Doublet", "Negative"))
-cell_status$doublet_call <- factor(cell_status$doublet_call,
-                                            levels = c("singlet", "doublet"),
-                                            labels = c("Singlet", "Doublet"))
-
-label(cell_status$HTO_classification.global) <- "HTODemux Classification"   
-label(cell_status$doublet_call) <- "scDblFinder Classification"   
-
-table1(data = cell_status, 
-       ~ doublet_call | HTO_classification.global,
-       caption = "HTODemux Classification")
-```
-
-43.1% of the cells being identified as doublets by HTODemux are classified as singlets from doublet identification by the scDblFinder. Let us see the results for each experiment.
-
-```{r}
-table1(data = cell_status, 
-       ~ doublet_call + HTO_classification.global | timepoint,
-       caption = "Lane")
-```
-
-For the both classifications, the rate of doublets pr. lane is almost the same, so the doublets seem to be somewhat distributed equally across lanes.
-
-```{r}
-cell_status$id <- factor(cell_status$id)
-label(cell_status$id) <- "ID"  
-
-table1(data = cell_status, 
-       ~ id | HTO_classification.global)
-```
-
-We choose to remove the doublets identified by the doublet score.
+## Removal of HTO demux identified doublets
 
 ```{r}
 seu_obj_preprocessed <- subset(seu_obj_filtered,
-                               subset = doublet_call == "singlet")
+                           subset = HTO_classification.global == "Singlet")
+```
 
+The classification of the cells are now irrelevant, as all cells are thought to be singlets. Thus, this metadata is removed before the filtered Seurat object is saved. The HTO assay will no longer be included.
 
+```{r}
+seu_obj_preprocessed$HTO_classification  <- NULL
+seu_obj_preprocessed$HTO_margin      <- NULL
+seu_obj_preprocessed$HTO_secondID    <- NULL
+seu_obj_preprocessed@assays$HTO <- NULL
+
+```
+
+Let us see how much the doublet removal removed:
+
+```{r}
 print(paste("Genes removed: ", 
             dim(seu_obj_filtered)[1] - dim(seu_obj_preprocessed)[1], 
             " (",
@@ -861,40 +680,62 @@ print(paste("Cells removed: ",
             "%)",
       sep = ""))
 ```
+Genes removed: 0 (0%)
+Cells removed: 4600 (11.54%)
 
-We look how many at the numbers for the HTO classification again.
+## Preprocessing
+The final preprocessing of the data are done according to the standard Seurat workflow.
+
+### Normalization
+The counts are normalized by dividing the count for each gene pr. cell by the total counts for that cell and multiplied by a scale factor. This is then log transformed using the natural log.
 
 ```{r}
-remain <- table(seu_obj_preprocessed@meta.data$HTO_classification.global)
-
-remain
-print(paste("Doublets and negatives now corresponding to ",
-            round(sum(remain[1:2])/sum(remain)*100, 2), 
-            "%",
-            sep = ""))
+seu_obj_preprocessed <- NormalizeData(seu_obj_preprocessed,
+                                           normalization.method = "LogNormalize",
+                                           scale.factor = 10000)
 ```
 
-Let us inspect the heatmap ones more.
+### Identification of Highly Variable Features
+
+We find a subset of features that exhibit high cell-to-cell variation in the dataset. These genes are thought be the most biological relevant genes, and by focussing on these features the computations will become more efficient in the downstream analysis. We choose to find the 2000 most variable genes, which is the default value for the FindVariableFeatures function.
 
 ```{r}
-heatmap_post_filtering <- HTOHeatmap(seu_obj_preprocessed,
-                                     assay = "HTO",
-                                     ncells = 10000) +
-  ggtitle("HTO identity") +
-  theme(plot.title = element_text(hjust = 0.5))
-
-ggsave(filename = "heatmap_post_filtering.png",
-         path = results_path,
-         plot = heatmap_post_filtering)
-
-heatmap_post_filtering
+seu_obj_preprocessed <- FindVariableFeatures(seu_obj_preprocessed,
+                                                  selection.method = "vst",
+                                                  nfeatures = 2000)
 ```
 
-The final Seurat object is saved.
+### Scale Data
+
+The normalized counts for the variable genes are scaled, that is, the mean expression across cells becomes 0 and the variance across cells is 1. This step is a standard step prior to dimensional reduction techniques.
 
 ```{r}
-saveRDS(seu_obj_preprocessed, 
+seu_obj_preprocessed <- ScaleData(seu_obj_preprocessed,
+                              features = VariableFeatures(object = seu_obj_preprocessed))
+```
+
+### Dimensionality Reduction
+
+To visualize the data in an UMAP plot later on, linear dimensional reduction, PCA, is performed.
+
+```{r}
+seu_obj_preprocessed <- RunPCA(seu_obj_preprocessed,
+                              features = VariableFeatures(object = seu_obj_preprocessed))
+
+ElbowPlot(seu_obj_preprocessed, reduction = "pca")
+```
+
+From the elbow plot, we should be fine with using above 20 dimensions.
+
+```{r}
+seu_obj_preprocessed <- RunUMAP(seu_obj_preprocessed, dims = 1:30)
+
+```
+
+```{r}
+saveRDS(seu_obj_preprocessed,
         file = paste(data_path,
                      "seurat_data/seu_obj_preprocessed.rds",
-                     sep = "/"))
+                     sep = "/")
+)
 ```

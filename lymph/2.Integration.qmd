@@ -40,7 +40,7 @@ results_path <- "o:/Public/T-Cell-Signalling-and-Development/VB Lab/10x_data/Spe
 
 ```{r}
 project <- "10xRNA_M-EAE-gdT"
-experiment_id <- list("LN0", "LN11", "LN21")
+experiment_id <- list("LN0", "LN11", "LN21", "NEO")
 experiment_num <- length(experiment_id)
 ```
 
@@ -59,25 +59,20 @@ The data are clustered by running functions FindNeigbors and FindClusters, then 
 ```{r}
 seu_obj_preproc <- FindNeighbors(seu_obj_preproc, dims = 1:30)
 
-seu_obj_preproc <- FindClusters(seu_obj_preproc, resolution = c(0.1, 0.2, 0.3, 0.5, 0.7))
+seu_obj_preproc <- FindClusters(seu_obj_preproc, resolution = c(0.1, 0.3, 0.5))
 
 ElbowPlot(seu_obj_preproc)
 
 seu_obj_preproc <- RunUMAP(seu_obj_preproc, dims = 1:30)
-
 
 ```
 
 ```{r}
 DimPlot(seu_obj_preproc, group.by = "RNA_snn_res.0.1", label = TRUE, reduction = "umap")
 
-DimPlot(seu_obj_preproc, group.by = "RNA_snn_res.0.2", label = TRUE, reduction = "umap")
-
 DimPlot(seu_obj_preproc, group.by = "RNA_snn_res.0.3", label = TRUE, reduction = "umap")
 
 DimPlot(seu_obj_preproc, group.by = "RNA_snn_res.0.5", label = TRUE, reduction = "umap")
-
-DimPlot(seu_obj_preproc, group.by = "RNA_snn_res.0.7", label = TRUE, reduction = "umap")
 ```
 
 The clustering is first visualized by coloring the clustering by experiment, to see if the clustering are performed on a technical variation (batch effects) rather than on biological variation.
@@ -141,7 +136,7 @@ seu_obj_integrated <- ScaleData(seu_obj_integrated, features = all.genes)
 
 seu_obj_integrated <- RunPCA(seu_obj_integrated, features = VariableFeatures(object = seu_obj_integrated))
 
-ElbowPlot(seu_obj_integrated)
+#ElbowPlot(seu_obj_integrated)
 
 seu_obj_integrated <- FindNeighbors(seu_obj_integrated, dims = 1:30)
 seu_obj_integrated <- FindClusters(seu_obj_integrated, resolution = c(0.1, 0.2, 0.3, 0.5, 0.7))
@@ -165,6 +160,15 @@ ggsave("umap_integrated_experiment.png", umap_integrated_experiment, path= resul
   #                                 label = TRUE,
    #                                group.by = "integrated_snn_res.0.2")
 #umap_integrated_disease
+
+saveRDS(seu_obj_integrated, paste(data_path, "/seurat_data/seu_obj_integrated_clustered.rds", sep = ""))
+
+
+```
+
+read in integrated and clustered object
+```{r}
+seu_obj_integrated <- readRDS(paste(data_path, "/seurat_data/seu_obj_integrated_clustered.rds", sep = ""))
 ```
 
 ### Determine clustering resolution using clustree
@@ -181,6 +185,10 @@ ggsave("umap_res_0.2.png", umap_res_0.2, path= results_path)
 umap_res_0.3 <- DimPlot(seu_obj_integrated, group.by = "integrated_snn_res.0.3", label = TRUE, reduction = "umap")
 umap_res_0.3
 ggsave("umap_res_0.3.png", umap_res_0.3, path= results_path)
+
+umap_res_0.5 <- DimPlot(seu_obj_integrated, group.by = "integrated_snn_res.0.5", label = TRUE, reduction = "umap")
+umap_res_0.5
+ggsave("umap_res_0.5.png", umap_res_0.5, path= results_path)
 
 ```
 
@@ -201,6 +209,8 @@ Explore expression of delta and gamma chains, to guide cell annotation
 delta_chain <- all.genes[(str_detect(all.genes, "Trdv"))]
 gamma_chain <- all.genes[(str_detect(all.genes, "Trgv"))]
 
+gamma_chain_2 <- all.genes[(str_detect(all.genes, "Tcrg-V"))]
+
 # Ignore clustering results.
 Idents(seu_obj_integrated) <- ""
 
@@ -216,6 +226,13 @@ gammaP <- FeaturePlot(seu_obj_integrated,
                       order = TRUE,
                       min.cutoff = 'q10',
                       label = TRUE) 
+
+gammaP2 <- FeaturePlot(seu_obj_integrated,
+                      reduction = "umap",
+                      features = gamma_chain_2,
+                      order = TRUE,
+                      min.cutoff = 'q10',
+                      label = TRUE)
 
 IFN_g <- FeaturePlot(seu_obj_integrated,
                       reduction = "umap",
@@ -245,6 +262,10 @@ ggsave(filename = "featureplot_TRG.png",
        path = results_path,
        plot = gammaP)
 
+ggsave(filename = "featureplot_Tcrg-V.png",
+       path = results_path,
+       plot = gammaP2)
+
 ggsave(filename = "featureplot_IL.png",
        path = results_path,
        plot = IL)
@@ -260,6 +281,17 @@ Explore conserved markers in one cluster compared to all others, to guide cell a
 
 ```{r}
 DefaultAssay(seu_obj_integrated) <- "RNA"
+seu_obj_integrated <- JoinLayers(seu_obj_integrated)
+
+cluster10_markers <- FindMarkers(seu_obj_integrated,
+                                                   ident.1 = 10,
+                                                   only.pos = TRUE, min.pct = 0.25,  min.diff.pct = 0.25,
+                                                   logfc.threshold = 0.25)
+
+cluster9_markers <- FindMarkers(seu_obj_integrated,
+                                                   ident.1 = 9,
+                                                   only.pos = TRUE, min.pct = 0.25,  min.diff.pct = 0.25,
+                                                   logfc.threshold = 0.25)
 
 cluster8_markers <- FindMarkers(seu_obj_integrated,
                                                    ident.1 = 8,
@@ -355,3 +387,7 @@ Save the annotated seurat object
 ```{r}
 saveRDS(melanoma_seu_obj_integrated, paste(data_path, "seurat_data/melanoma_seu_obj_annotated.rds", sep = "/"))
 ```
+
+
+
+
