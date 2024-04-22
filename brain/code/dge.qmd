@@ -17,6 +17,7 @@ library(Seurat)
 library(tidyverse)
 library(stringr)
 library(ggplot2)
+library(ggrepel)
 library(patchwork)
 library(SingleCellExperiment)
 library(DESeq2)
@@ -108,6 +109,8 @@ cts_split_modified <- lapply(cts_split, function(x){
 counts_subset <- cts_split_modified
 ```
 
+### D11 vs. D0 (all cells)
+
 The following function runs DESeq2 analysis with counts as input, and colData describing the design.
 
 ```{r}
@@ -141,7 +144,7 @@ DeSeq2Analysis <- function(counts, colData){
   sig_res <- dplyr::filter(res_tbl, padj < padj_cutoff) %>%
     dplyr::arrange(padj)
   
-  res_list <- list(res, sig_res)
+  res_list <- list(res_tbl, sig_res)
   
   return(res_list)
 }
@@ -166,20 +169,86 @@ res_all <- DeSeq2Analysis(counts_all, colData)
 
 We take a look at the significant results:
 
-```{r}
-ggplot(data = res_all[[1]],
-       mapping = aes(x = log2FoldChange,
-                     y = -log10(pvalue))) + 
-  geom_point() + 
-  geom_point(data = res_all[[2]],
+```{r, warning = FALSE}
+vulcanoPlot <- function(res){
+  ggplot(data = res[[1]],
+         mapping = aes(x = log2FoldChange,
+                       y = -log10(pvalue),
+                       label = gene)) + 
+  geom_point(alpha = 0.5) + 
+  geom_point(data = res[[2]],
              mapping = aes(x = log2FoldChange,
-                     y = -log10(pvalue)),
-             color = "red") + 
-   geom_text_repel()
+                           y = -log10(pvalue)),
+             color = "#CC3333",
+             alpha = 0.5) + 
+  geom_label_repel(data = res[[2]],
+                   color = "black") + 
   theme_light()
+}
+
+vulcanoPlot(res_all)
+
+ggsave(filename = "vulcano_all.png",
+       path = result_path,
+       width = 10,
+       height = 6)
 ```
 
-Two genes are found to be significantly downregulated for responders vs. non-responders.
+### D11 vs. D0 (Type 1)
 
+We run the analysis for the cells classified as type 1 cells. 
+
+```{r, message = FALSE}
+counts_type1 <- counts_subset$`Type 1`
+res_type1 <- DeSeq2Analysis(counts_type1, colData)
+```
+
+Let us take a look at the results.
+
+We take a look at the significant results:
+
+```{r, warning = FALSE}
+vulcanoPlot(res_type1)
+```
+
+### D11 vs. D0 (Type 3)
+
+We run the analysis for the cells classified as type 3 cells. 
+
+```{r, message = FALSE}
+counts_type3 <- counts_subset$`Type 3`
+res_type3 <- DeSeq2Analysis(counts_type3, colData)
+```
+
+We take a look at the results.
+
+```{r, warning = FALSE}
+vulcanoPlot(res_type3)
+
+
+```
+
+
+```{r}
+saveDESeqRes <- function(res, filename){
+  wb <- createWorkbook()
+  for (i in 1:length(res)){
+    addWorksheet(wb, sheetName = c("complete", "significant")[i])
+    writeData(wb,
+              sheet = i,
+              x = res[[i]],
+              rowNames = FALSE)
+    }
+  saveWorkbook(wb, paste(result_path,
+                         "/",
+                         filename,
+                         ".xlsx",
+                         sep = ""))
+}
+
+saveDESeqRes(res_all, "res_all")
+saveDESeqRes(res_type1, "res_type1")
+saveDESeqRes(res_type3, "res_type3")
+```
 
 
