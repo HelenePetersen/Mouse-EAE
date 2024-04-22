@@ -184,7 +184,7 @@ seu_obj_integrated <- IntegrateData(anchorset = anchors,
                                     verbose = FALSE)
 ```
 
-The integrated Seurat object is saved. 
+The integrated Seurat object is saved.
 
 ```{r}
 saveRDS(seu_obj_integrated, 
@@ -214,6 +214,7 @@ seu_obj_integrated <- FindClusters(seu_obj_integrated,
                                    resolution = res,
                                    verbose = FALSE)
 ```
+
 We look at the results after integration.
 
 ```{r}
@@ -316,7 +317,7 @@ clustree(seu_obj_integrated,
          prefix = "integrated_snn_res.")
 ```
 
-We want to resolutions which make samples to move into clusters dividing existing ones instead of moving them to other distant clusters. Thus, a resolution of 0.5 is chosen for now, but further investigation is necessary. 
+We want to resolutions which make samples to move into clusters dividing existing ones instead of moving them to other distant clusters. Thus, a resolution of 0.5 is chosen for now, but further investigation is necessary.
 
 ```{r}
 Idents(seu_obj_integrated) <- "integrated_snn_res.0.5"
@@ -324,7 +325,7 @@ Idents(seu_obj_integrated) <- "integrated_snn_res.0.5"
 
 ## Cell Type assignment
 
-We look at the expression of the different Vγ chains. 
+We look at the expression of the different Vγ chains.
 
 ```{r}
 # Change assay to RNA.
@@ -358,7 +359,7 @@ ggsave(filename = "featureplot_Vg.png",
        height = 12)
 ```
 
-Cluster 0 express Vγ6 while cluster 2 express Vγ4. We take a look at the expression of characteristic interleukins. We see which genes stand out in the clusters in compared to the others. 
+Cluster 0 express Vγ6 while cluster 2 express Vγ4. We take a look at the expression of characteristic interleukins. We see which genes stand out in the clusters in compared to the others.
 
 ```{r}
 # Join layers.
@@ -472,7 +473,7 @@ ggsave(filename = "featureplot_type3_sig.png",
        height = 12)
 ```
 
-Cluster 3 seems express both genes from the type 1 and the type 3 signature. The clusters are annotated. 
+Cluster 3 seems express both genes from the type 1 and the type 3 signature. The clusters are annotated.
 
 ```{r}
 seu_obj_annotated <- RenameIdents(object = seu_obj_integrated,
@@ -525,7 +526,7 @@ ggsave(filename = "cell_annotation_exp.png",
        height = 6)
 ```
 
-The annotated Seurat object is saved. 
+The annotated Seurat object is saved.
 
 ```{r}
 saveRDS(seu_obj_annotated, 
