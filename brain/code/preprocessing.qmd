@@ -443,7 +443,7 @@ The filtered Seurat object is saved.
 
 ```{r}
 saveRDS(seu_obj_filtered, 
-        file = "data/seurat_data/seu_obj_filtered.rds")
+        file = "../data/seurat_data/seu_obj_filtered.rds")
 ```
 
 ## Demultiplexing
@@ -863,7 +863,7 @@ for (i in 1:exp_numb){
 # Combine the plots.
 scatterEXP_recdoublets <- (list_scatter[[1]] + theme(legend.position = "none")) | list_scatter[[2]] 
 
-ggsave(filename = "scatterEXP_doublets.png",
+ggsave(filename = "scatterEXP_recdoublets.png",
        path = result_path,
        plot = scatterEXP_recdoublets,
        width = 12,

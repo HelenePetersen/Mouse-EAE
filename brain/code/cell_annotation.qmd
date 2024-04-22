@@ -1,0 +1,561 @@
+---
+title: "Integration"
+format: html
+editor: visual
+---
+
+## Preparation
+
+### Set Up
+
+Relevant libraries are loaded.
+
+```{r, message = FALSE}
+library(Seurat)
+library(tidyverse)
+library(stringr)
+library(ggplot2)
+library(patchwork)
+library(SingleCellExperiment)
+library(scater)
+library(table1)
+library(clustree)
+library(openxlsx)
+```
+
+Define the path to get the data and save results.
+
+```{r}
+data_path <- "~/Dropbox/Special Project Single Cell/mouse/brain/data/seurat_data"
+
+result_path <- "~/Dropbox/Special Project Single Cell/mouse/brain/results/integration"
+```
+
+### Data Load
+
+The preprocessed data is loaded.
+
+```{r}
+seu_obj_preproc <- readRDS(paste(data_path,
+                                 "seu_obj_preproc.rds",
+                                 sep = "/"))
+```
+
+## Integration
+
+### Clustering
+
+The data is clustered using different resolutions by running the functions FindNeigbors and FindClusters.
+
+```{r}
+res <- c(0.1, 0.3, 0.5, 0.7)
+
+seu_obj_preproc <- FindNeighbors(seu_obj_preproc, 
+                                 dims = 1:30,
+                                 verbose = FALSE)
+
+seu_obj_preproc <- FindClusters(seu_obj_preproc, 
+                                resolution = res,
+                                verbose = FALSE)
+```
+
+### Batch Effects
+
+There seems to be noticeable batch effects as cells cluster according to the timepoint in which they were taken.
+
+```{r}
+dimplot_pre <- DimPlot(seu_obj_preproc,
+                       reduction = "umap", 
+                       group.by = "experiment",
+                       cols = c("#CC3333", "#0066CC"),
+                       pt.size = 1,
+                       alpha = 0.8) + 
+  labs(title = "") + 
+  xlab("UMAP1") +
+  ylab("UMAP2")
+
+ggsave(filename = "dimplot_pre.png",
+       path = result_path,
+       plot = dimplot_pre,
+       width = 10,
+       height = 6)
+
+dimplot_pre
+```
+
+We color the cells based on both experiment and replicate.
+
+```{r}
+seu_obj_preproc$exp_rep <- paste(seu_obj_preproc$experiment,
+                                 seu_obj_preproc$replicate,
+                                 sep = " Rep ")
+DimPlot(seu_obj_preproc, 
+        reduction = "umap", 
+        group.by = "exp_rep",
+        cols = c("#990000", "#CC3333", "#FF9999", 
+                 "#003399", "#0066CC", "#99CCFF"),
+        pt.size = 1,
+        alpha = 0.8) + 
+  labs(title = "") + 
+  xlab("UMAP1") +
+  ylab("UMAP2")
+
+ggsave(filename = "dimplot_pre_rep.png",
+       path = result_path,
+       width = 10,
+       height = 6)
+```
+
+When coloring the cells according to their assigned cluster for a given resolution, it is clear, that all clusters are not present for a given experiment.
+
+```{r}
+list_dimplot <- list()
+
+for (i in 1:length(res)){
+  list_dimplot[[i]] <- DimPlot(seu_obj_preproc, 
+                               reduction = "umap", 
+                               group.by = paste("RNA_snn_res.", res[i], sep = ""),
+                               split.by = "experiment",
+                               cols = c("#CC3333", "#0066CC", "#339900", 
+                                        "#FF9933", "#996633", "#FF3399"),
+                               pt.size = 1,
+                               alpha = 0.5) +
+    labs(title = paste("Resolution", res[i])) + 
+    xlab("UMAP1") +
+    ylab("UMAP2") +
+    theme(plot.title = element_text(hjust = 0))
+  
+  ggsave(filename = paste("dimplot_pre_",
+                          res[i],
+                          ".png",
+                          sep = ""),
+       path = result_path,
+       plot = list_dimplot[[i]],
+       width = 10,
+       height = 6)
+}
+
+list_dimplot[[1]]
+```
+
+### Integration
+
+We split the dataset into a list of 2 seurat objects (D0 and D11).
+
+```{r}
+seu_obj_split <- SplitObject(seu_obj_preproc, 
+                             split.by = "experiment")
+```
+
+We normalize and identify variable features for each timepoint independently.
+
+```{r}
+for(i in 1:length(seu_obj_split)){
+  seu_obj_split[[i]] <- NormalizeData(object = seu_obj_split[[i]],
+                                      normalization.method = "LogNormalize",
+                                      scale.factor = 10000,
+                                      verbose = FALSE)
+  
+  seu_obj_split[[i]] <- FindVariableFeatures(object = seu_obj_split[[i]],
+                                             selection.method = "vst",
+                                             nfeatures = 2000,
+                                             verbose = FALSE)
+}
+```
+
+We select features that are repeatedly variable across datasets for integration.
+
+```{r}
+features <- SelectIntegrationFeatures(object.list = seu_obj_split)
+```
+
+The integration anchors are identified.
+
+```{r}
+anchors <- FindIntegrationAnchors(object.list = seu_obj_split,
+                                  anchor.features = features,
+                                  verbose = FALSE)
+```
+
+Finally, the data can be integrated using the anchors.
+
+```{r}
+seu_obj_integrated <- IntegrateData(anchorset = anchors,
+                                    verbose = FALSE)
+```
+
+The integrated Seurat object is saved. 
+
+```{r}
+saveRDS(seu_obj_integrated, 
+        file = "../data/seurat_data/seu_obj_integrated.rds")
+```
+
+We run the standard workflow for visualization and clustering.
+
+```{r}
+seu_obj_integrated <- ScaleData(seu_obj_integrated, 
+                                verbose = FALSE)
+
+seu_obj_integrated <- RunPCA(seu_obj_integrated,
+                             verbose = FALSE)
+
+seu_obj_integrated <- RunUMAP(seu_obj_integrated, 
+                              reduction = "pca", 
+                              dims = 1:30,
+                              verbose = FALSE)
+
+seu_obj_integrated <- FindNeighbors(seu_obj_integrated, 
+                                    reduction = "pca", 
+                                    dims = 1:30,
+                                    verbose = FALSE)
+
+seu_obj_integrated <- FindClusters(seu_obj_integrated, 
+                                   resolution = res,
+                                   verbose = FALSE)
+```
+We look at the results after integration.
+
+```{r}
+dimplot_post <- DimPlot(seu_obj_integrated,
+                       reduction = "umap", 
+                       group.by = "experiment",
+                       cols = c("#CC3333", "#0066CC"),
+                       pt.size = 1,
+                       alpha = 0.8) + 
+  labs(title = "") + 
+  xlab("UMAP1") +
+  ylab("UMAP2")
+
+ggsave(filename = "dimplot_post.png",
+       path = result_path,
+       plot = dimplot_pre,
+       width = 10,
+       height = 6)
+
+dimplot_post
+```
+
+We compare with the plot before integration.
+
+```{r}
+(dimplot_pre + theme(legend.position = "none") + labs(title = "Before integration")) | (dimplot_post + labs(title = "After integration"))
+
+ggsave(filename = "dimplot_pre_post.png",
+       path = result_path,
+       width = 14,
+       height = 6)
+```
+
+We see if the clusters for the integrated data are present for the two different timepoints.
+
+```{r}
+list_dimplot <- list()
+
+for (i in 1:length(res)){
+  list_dimplot[[i]] <- DimPlot(seu_obj_integrated, 
+                               reduction = "umap", 
+                               group.by = paste("integrated_snn_res.", res[i], sep = ""),
+                               split.by = "experiment",
+                               cols = c("#CC3333", "#0066CC", "#339900", 
+                                        "#FF9933", "#996633", "#FF3399"),
+                               pt.size = 1,
+                               alpha = 0.5) +
+    labs(title = paste("Resolution", res[i])) + 
+    xlab("UMAP1") +
+    ylab("UMAP2") +
+    theme(plot.title = element_text(hjust = 0))
+  
+  ggsave(filename = paste("dimplot_post_",
+                          res[i],
+                          ".png",
+                          sep = ""),
+       path = result_path,
+       plot = list_dimplot[[i]],
+       width = 10,
+       height = 6)
+}
+
+list_dimplot[[1]]
+```
+
+The figure above shows the results for resolution 0.1. The cells belonging to cluster 2 is mainly found for D11. We take a look at the clusters for all resolutions.
+
+```{r}
+list_dimplot <- list()
+
+for (i in 1:length(res)){
+  list_dimplot[[i]] <- DimPlot(seu_obj_integrated, 
+                               reduction = "umap", 
+                               group.by = paste("integrated_snn_res.", res[i], sep = ""),
+                               cols = c("#CC3333", "#0066CC", "#339900", 
+                                        "#FF9933", "#996633", "#FF3399"),
+                               pt.size = 1,
+                               alpha = 0.5) +
+    labs(title = paste("Resolution", res[i])) + 
+    xlab("UMAP1") +
+    ylab("UMAP2") +
+    theme(plot.title = element_text(hjust = 0))
+}
+
+wrap_plots(list_dimplot, 
+           ncol = 2,
+           nrow = 2,
+           byrow = TRUE)
+
+ggsave(filename = "clusters_post.png",
+       path = result_path,
+       width = 16,
+       height = 10)
+```
+
+It is hard to decide on the resolution, as none of the plots seem perfect. Clustree can create a plot of a clustering tree showing the relationship between clusterings at different resolutions.
+
+```{r}
+clustree(seu_obj_integrated, 
+         prefix = "integrated_snn_res.")
+```
+
+We want to resolutions which make samples to move into clusters dividing existing ones instead of moving them to other distant clusters. Thus, a resolution of 0.5 is chosen for now, but further investigation is necessary. 
+
+```{r}
+Idents(seu_obj_integrated) <- "integrated_snn_res.0.5"
+```
+
+## Cell Type assignment
+
+We look at the expression of the different Vγ chains. 
+
+```{r}
+# Change assay to RNA.
+DefaultAssay(seu_obj_integrated) <- "RNA"
+
+# Extract gene names for gamma chains. 
+genes <- sort(rownames(seu_obj_integrated))
+gamma_chain <- genes[str_detect(genes, pattern = "Tcrg-V")]
+
+list_featureplot <- FeaturePlot(seu_obj_integrated,
+                                reduction = "umap",
+                                features = gamma_chain,
+                                min.cutoff = "q1",
+                                label = TRUE,
+                                combine = FALSE) 
+
+list_featureplot <- lapply(X = list_featureplot, FUN = function(x){
+  x + 
+    xlab("UMAP1") +
+    ylab("UMAP2")
+})
+
+wrap_plots(list_featureplot, 
+           ncol = 2,
+           nrow = 3,
+           byrow = TRUE)
+
+ggsave(filename = "featureplot_Vg.png",
+       path = result_path,
+       width = 10,
+       height = 12)
+```
+
+Cluster 0 express Vγ6 while cluster 2 express Vγ4. We take a look at the expression of characteristic interleukins. We see which genes stand out in the clusters in compared to the others. 
+
+```{r}
+# Join layers.
+seu_obj_integrated[["RNA"]] <- JoinLayers(seu_obj_integrated[["RNA"]])
+
+# List to collects the markers for each cluster.
+list_clusters <- list()
+
+# Find markers.
+for (i in 1:length(table(Idents(seu_obj_integrated)))){
+  
+  list_clusters[[i]] <- data.frame(FindMarkers(seu_obj_integrated,
+                                               ident.1 = i-1,
+                                               only.pos = TRUE,
+                                               min.pct = 0.25,
+                                               min.diff.pct = -Inf,
+                                               logfc.threshold = 1,
+                                               verbose = FALSE))
+}
+
+# Save the results in excel.
+wb <- createWorkbook()
+ 
+for (i in 1:length(list_clusters)) {
+  addWorksheet(wb, 
+               sheetName = paste("cluster_", 
+                                 i-1,
+                                 sep = ""))
+  writeData(wb, 
+            sheet = i, 
+            x = list_clusters[[i]], 
+            rowNames = TRUE)
+}
+ 
+saveWorkbook(wb, paste(result_path,
+                       "cluster_markers.xlsx", 
+                       sep = "/"))
+```
+
+We see if the clusters express genes typical for type 1 or type 3 γδT cells.
+
+```{r}
+gdt_type_1 <- c("Tbx21", "Ifng", "Gzma", 
+                "Gzmb", "Stat1", "Irf1",
+                "Cd27")
+
+gdt_type_3 <- c("Rora", "Rorc", "Il22", 
+                "Il17a", "Il17f", "Il23r", 
+                "Ccr6", "Cd44", "Csf2")
+
+for (i in 1:length(list_clusters)){
+  print(paste("Cluster", i-1))
+  print(paste("Number of conserved markers for type 1 signature:",
+              sum(rownames(list_clusters[[i]]) %in% gdt_type_1)))
+  print(paste("Number of conserved markers for type 3 signature:",
+              sum(rownames(list_clusters[[i]]) %in% gdt_type_3)))
+}
+```
+
+It looks like cluster 0 and 2 might consist of type 3 γδT cells, while cluster 1 and 4 express genes from the type 1 signature. Cluster 3 seems express genes from type 1.
+
+```{r}
+list_featureplot <- FeaturePlot(seu_obj_integrated,
+                                reduction = "umap",
+                                features = gdt_type_1,
+                                min.cutoff = "q1",
+                                label = TRUE,
+                                combine = FALSE) 
+
+list_featureplot <- lapply(X = list_featureplot, FUN = function(x){
+  x + 
+    xlab("UMAP1") +
+    ylab("UMAP2")
+})
+
+wrap_plots(list_featureplot, 
+           ncol = 3,
+           nrow = 3,
+           byrow = TRUE)
+
+ggsave(filename = "featureplot_type1_sig.png",
+       path = result_path,
+       width = 14,
+       height = 12)
+```
+
+We do the same for the type 3 signature.
+
+```{r}
+list_featureplot <- FeaturePlot(seu_obj_integrated,
+                                reduction = "umap",
+                                features = gdt_type_3,
+                                min.cutoff = "q1",
+                                label = TRUE,
+                                combine = FALSE) 
+
+list_featureplot <- lapply(X = list_featureplot, FUN = function(x){
+  x + 
+    xlab("UMAP1") +
+    ylab("UMAP2")
+})
+
+wrap_plots(list_featureplot, 
+           ncol = 3,
+           nrow = 3,
+           byrow = TRUE)
+
+ggsave(filename = "featureplot_type3_sig.png",
+       path = result_path,
+       width = 14,
+       height = 12)
+```
+
+Cluster 3 seems express both genes from the type 1 and the type 3 signature. The clusters are annotated. 
+
+```{r}
+seu_obj_annotated <- RenameIdents(object = seu_obj_integrated,
+                                  "0" = "Type 3",
+                                  "1" = "Type 1",
+                                  "2" = "Type 3",
+                                  "3" = "UAN",
+                                  "4" = "Type 1")
+
+seu_obj_annotated$cell_type <- factor(Idents(seu_obj_annotated),
+                                      levels = c("Type 1", "Type 3", "UAN"))
+
+DimPlot(seu_obj_annotated,
+        reduction = "umap",
+        group.by = "cell_type",
+        cols = c("#CC3333", "#0066CC", "#339900",
+                 "#FF9933", "#996633", "#FF3399"),
+        pt.size = 1,
+        alpha = 0.5) +
+  labs(title = "Resolution 0.5") + 
+  xlab("UMAP1") +
+  ylab("UMAP2") +
+  theme(plot.title = element_text(hjust = 0))
+
+ggsave(filename = "cell_annotation.png",
+       path = result_path,
+       width = 10,
+       height = 6)
+```
+
+We look at the plot for each experiment. The number of type 3 cells seems to increase significantly.
+
+```{r}
+DimPlot(seu_obj_annotated,
+        reduction = "umap",
+        group.by = "cell_type",
+        split.by = "experiment",
+        cols = c("#CC3333", "#0066CC", "#339900",
+                 "#FF9933", "#996633", "#FF3399"),
+        pt.size = 1,
+        alpha = 0.5) +
+  labs(title = "Resolution 0.5") + 
+  xlab("UMAP1") +
+  ylab("UMAP2") +
+  theme(plot.title = element_text(hjust = 0))
+
+ggsave(filename = "cell_annotation_exp.png",
+       path = result_path,
+       width = 10,
+       height = 6)
+```
+
+The annotated Seurat object is saved. 
+
+```{r}
+saveRDS(seu_obj_annotated, 
+        file = "../data/seurat_data/seu_obj_annotated.rds")
+```
+
+## This is just mess
+
+```{r}
+DimPlot(seu_obj_integrated,
+        reduction = "umap",
+        group.by = "integrated_snn_res.0.5",
+        cols = c("#CC3333", "#0066CC", "#339900",
+                 "#FF9933", "#996633", "#FF3399"),
+        pt.size = 1,
+        alpha = 0.5) +
+  labs(title = "Resolution 0.5") + 
+  xlab("UMAP1") +
+  ylab("UMAP2") +
+  theme(plot.title = element_text(hjust = 0)) + 
+  geom_vline(xintercept = c(5.5, 7.7)) +
+  geom_hline(yintercept = c(1.5, 3))
+```
+
+```{r}
+seu_obj_integrated@meta.data$umap1 <- seu_obj_integrated@reductions$umap@cell.embeddings[, 1]
+
+seu_obj_integrated@meta.data$umap2 <- seu_obj_integrated@reductions$umap@cell.embeddings[, 2]
+
+seu_obj_sub <- subset(seu_obj_integrated,
+                      subset = umap1 > 5.5 & umap1 < 7.7 & umap2 > 1.5 & umap2 < 3)
+
+```
