@@ -22,6 +22,7 @@ library(DESeq2)
 library(scater)
 library(table1)
 library(clustree)
+library(openxlsx)
 ```
 
 ```{r}
@@ -131,6 +132,7 @@ seu_obj_integrated <- readRDS(paste(data_path, "/seurat_data/seu_obj_integrated.
 Scale the integrated data and perform the clustering again on the now integrated data
 
 ```{r}
+DefaultAssay(seu_obj_integrated) <- "integrated"
 all.genes <- rownames(seu_obj_integrated)
 seu_obj_integrated <- ScaleData(seu_obj_integrated, features = all.genes)
 
@@ -176,7 +178,7 @@ seu_obj_integrated <- readRDS(paste(data_path, "/seurat_data/seu_obj_integrated_
 ```{r}
 clustering_tree_res <- clustree(seu_obj_integrated, prefix = "integrated_snn_res.")
 clustering_tree_res
-ggsave("clustree_low_res.png", clustering_tree_res, path= results_path)
+ggsave("clustree.png", clustering_tree_res, path= results_path)
 
 umap_res_0.2 <- DimPlot(seu_obj_integrated, group.by = "integrated_snn_res.0.2", label = TRUE, reduction = "umap")
 umap_res_0.2
@@ -185,6 +187,10 @@ ggsave("umap_res_0.2.png", umap_res_0.2, path= results_path)
 umap_res_0.3 <- DimPlot(seu_obj_integrated, group.by = "integrated_snn_res.0.3", label = TRUE, reduction = "umap")
 umap_res_0.3
 ggsave("umap_res_0.3.png", umap_res_0.3, path= results_path)
+
+umap_res_0.3_split <- DimPlot(seu_obj_integrated, group.by = "integrated_snn_res.0.3", split.by = "timepoint", label = TRUE, reduction = "umap")
+umap_res_0.3_split
+ggsave("umap_res_0.3_split.png", umap_res_0.3_split, path= results_path)
 
 umap_res_0.5 <- DimPlot(seu_obj_integrated, group.by = "integrated_snn_res.0.5", label = TRUE, reduction = "umap")
 umap_res_0.5
@@ -197,6 +203,7 @@ The clustering is not that easy to determine, does it make sense for the upper r
 ```{r}
 Idents(seu_obj_integrated) <- "integrated_snn_res.0.3"
 ```
+
 
 ## Cell annotation
 
@@ -248,6 +255,14 @@ IL <- FeaturePlot(seu_obj_integrated,
                       min.cutoff = 'q10',
                       label = TRUE)
 
+other_cells <- FeaturePlot(seu_obj_integrated,
+                      reduction = "umap",
+                      features = c("Cd8a", "Cd4", "Cd38", "Cd19" ),
+                      order = TRUE,
+                      min.cutoff = 'q10',
+                      label = TRUE)
+other_cells
+
 Idents(seu_obj_integrated) <- "integrated_snn_res.0.3"
 ```
 
@@ -273,6 +288,10 @@ ggsave(filename = "featureplot_IL.png",
 ggsave(filename = "featureplot_INF-G.png",
        path = results_path,
        plot = IFN_g)
+
+ggsave(filename = "featureplot_contamination.png",
+       path = results_path,
+       plot = other_cells)
 ```
 
 ### Conserved markers in clusters
@@ -281,6 +300,7 @@ Explore conserved markers in one cluster compared to all others, to guide cell a
 
 ```{r}
 DefaultAssay(seu_obj_integrated) <- "RNA"
+all.genes.RNA <- data.frame(rownames(seu_obj_integrated))
 seu_obj_integrated <- JoinLayers(seu_obj_integrated)
 
 cluster10_markers <- FindMarkers(seu_obj_integrated,
@@ -339,53 +359,228 @@ cluster0_markers <- FindMarkers(seu_obj_integrated,
                                                    logfc.threshold = 0.25)
 ## Il23r, Il7r, Il17re
 ```
+Save conserved markers as sheets in one excel file
+```{r}
+clust_markers <- list(cluster0_markers, cluster1_markers, cluster2_markers, cluster3_markers,
+  cluster4_markers, cluster5_markers, cluster6_markers, cluster7_markers,
+  cluster8_markers, cluster9_markers, cluster10_markers)
 
+wb <- createWorkbook()
+
+for (i in 1:length(clust_markers)) {
+  addWorksheet(wb, sheetName = paste("cluster", i-1))
+  writeData(wb, sheet = i, x = clust_markers[[i]], rowNames = TRUE)
+}
+
+saveWorkbook(wb, paste(results_path,"cluster_markers.xlsx", sep = "/"))
+
+```
+
+
+## Filter out contamination
+```{r}
+qcPlotVln <- function(seu_obj, feature, feature_name, threshold1, threshold2, xlab){
+  ggplot(data = seu_obj@meta.data,
+         mapping = aes(x = orig.ident,
+                     y = {{feature}})) +
+  geom_violin(colour = "#6699CC",
+              fill = "#6699CC",
+              alpha = 0.2) +
+  geom_jitter(size = 0.1,
+              alpha = 0.2) + 
+  scale_x_discrete(labels = as.character(xlab)) + 
+  xlab("Sample") + 
+  ylab(feature_name) + 
+  labs(title = paste("Distribution of", tolower(feature_name), "across samples",
+                     sep = " ")) +
+  #facet_wrap(~reponse) + 
+  theme_bw() + 
+  geom_hline(yintercept = c(threshold1, threshold2),
+             colour = "#CC3333")
+}
+```
+
+
+```{r}
+DefaultAssay(seu_obj_integrated) <- "RNA"
+seu_obj_integrated <- PercentageFeatureSet(seu_obj_integrated,
+                                pattern = "Cd4",
+                                col.name = "percent_Cd4")
+
+seu_obj_integrated <- PercentageFeatureSet(seu_obj_integrated,
+                                pattern = "Cd19",
+                                col.name = "percent_Cd19")
+
+seu_obj_integrated <- PercentageFeatureSet(seu_obj_integrated,
+                                pattern = "Cd38",
+                                col.name = "percent_Cd38")
+
+```
+
+```{r}
+vlnplot_cd4 <- qcPlotVln(seu_obj_integrated, 
+                          percent_Cd4, 
+                          "Cd4 content (%)", 
+                          NULL, NULL,
+                          experiment_id)
+
+vlnplot_cd19 <- qcPlotVln(seu_obj_integrated, 
+                          percent_Cd19, 
+                          "Cd19 content (%)", 
+                          NULL, NULL,
+                          experiment_id)
+
+vlnplot_cd38 <- qcPlotVln(seu_obj_integrated, 
+                          percent_Cd38, 
+                          "Cd38 content (%)", 
+                          NULL, NULL,
+                          experiment_id)
+```
+
+Save the files.
+
+```{r}
+ggsave(filename = "vlnplot_cd4.png",
+       path = results_path,
+       plot = vlnplot_cd4)
+
+ggsave(filename = "vlnplot_cd19.png",
+       path = results_path,
+       plot = vlnplot_cd19)
+
+ggsave(filename = "vlnplot_cd38.png",
+       path = results_path,
+       plot = vlnplot_cd38)
+```
+
+```{r}
+seu_LN0 <- subset(seu_obj_integrated,
+       subset = timepoint == 'LN0')
+seu_LN11 <- subset(seu_obj_integrated,
+       subset = timepoint == 'LN11')
+seu_LN21 <- subset(seu_obj_integrated,
+       subset = timepoint == 'LN21')
+seu_NEO <- subset(seu_obj_integrated,
+       subset = timepoint == 'NEO')
+
+quantile(seu_LN0@meta.data$percent_Cd4, 0.99)
+quantile(seu_LN11@meta.data$percent_Cd4, 0.99)
+quantile(seu_LN21@meta.data$percent_Cd4, 0.99)
+quantile(seu_NEO@meta.data$percent_Cd4, 0.99)
+
+```
+
+
+```{r}
+seu_obj_integrated_filtered <- subset(seu_obj_integrated,
+                          subset = percent_Cd19 == 0 &
+                          percent_Cd38 == 0 &
+                          ((timepoint != "NEO" & percent_Cd4 < 0.38) |
+                            (timepoint == "NEO" & percent_Cd4 < 0.22)))
+
+vlnplot_cd4_filt <- qcPlotVln(seu_obj_integrated, 
+                          percent_Cd4, 
+                          "Cd4 content (%)", 
+                          NULL, NULL,
+                          experiment_id)
+
+ggsave(filename = "vlnplot_cd4_filteret.png",
+       path = results_path,
+       plot = vlnplot_cd4_filt)
+
+```
+
+## Look for Type 1 and Type 3 markers
+
+```{r}
+Type_3 <- FeaturePlot(seu_obj_integrated_filtered,
+                      reduction = "umap",
+                      features = c("Rora", "Rorc", "Il22", "Il17a", "Il17f", "Il23r", "Ccr6", "Cd44" ),
+                      order = TRUE,
+                      min.cutoff = 'q10',
+                      label = TRUE)
+#ggsave(filename = "feature_Type3.png",
+#       path = results_path,
+#       plot = Type_3)
+
+Type_1 <- FeaturePlot(seu_obj_integrated_filtered,
+                      reduction = "umap",
+                      features = c("Tbx21", "Ifng", "Gzma", "Gzmb", "Stat1", "Irf1", "Cd27"),
+                      order = TRUE,
+                      min.cutoff = 'q10',
+                      label = TRUE)
+#ggsave(filename = "feature_Type1.png",
+#       path = results_path,
+#       plot = Type_1)
+```
+
+```{r}
+DefaultAssay(seu_obj_integrated_filtered) <- "RNA"
+seu_obj_integrated_filtered <- JoinLayers(seu_obj_integrated_filtered)
+Idents(seu_obj_integrated_filtered) <- "integrated_snn_res.0.3"
+
+cluster9_markers <- FindMarkers(seu_obj_integrated_filtered,
+                                                   ident.1 = 9,
+                                                   only.pos = TRUE, min.pct = 0.25,  min.diff.pct = 0.25,
+                                                   logfc.threshold = 0.25)
+
+cluster8_markers <- FindMarkers(seu_obj_integrated_filtered,
+                                                   ident.1 = 8,
+                                                   only.pos = TRUE, min.pct = 0.25,  min.diff.pct = 0.25,
+                                                   logfc.threshold = 0.25)
+```
+
+```{r}
+clust_markers <- list(cluster8_markers, cluster9_markers)
+
+wb <- createWorkbook()
+
+for (i in 1:2) {
+  addWorksheet(wb, sheetName = paste("cluster", i+7))
+  writeData(wb, sheet = i, x = clust_markers[[i]], rowNames = TRUE)
+}
+
+saveWorkbook(wb, paste(results_path,"cluster_markers_8_9.xlsx", sep = "/"))
+```
+
+# Cell annotation
 Rename clusters to the discovered cell type. Cluster 0, 1 and 2 are un-annotated (UANN) since there is no clear pattern of delta chain expression.
 
 ```{r}
-melanoma_seu_obj_integrated <- RenameIdents(object = melanoma_seu_obj_integrated,
-                                "0" = "VD2",
-                                "1" = "VD1",
-                                "2" = "VD2",
-                                "3" = "VD1",
-                                "4" = "UANN1",
-                                "5" = "VD3",
-                                "6" = "UANN2",
-                                "7" = "UANN3"
+seu_obj_integrated_filtered <- RenameIdents(object = seu_obj_integrated_filtered,
+                                "0" = "T3",
+                                "1" = "T1",
+                                "2" = "T1",
+                                "3" = "T3",
+                                "4" = "Prolife",
+                                "5" = "T3",
+                                "6" = "T1",
+                                "7" = "T1",
+                                "8" = "T1",
+                                "9" = "T1",
+                                "10" = "UANN"
                                 )
 
 # Create a new column in metadata with cell type annotations from idents
-melanoma_seu_obj_integrated@meta.data$Cell_ann <- Idents(melanoma_seu_obj_integrated)
+seu_obj_integrated_filtered@meta.data$Cell_ann <- Idents(seu_obj_integrated_filtered)
 
 ```
 
 ## Visualize the data with cell type annotations
 
 ```{r}
-clusters <- DimPlot(melanoma_seu_obj_integrated, reduction = 'umap', label = TRUE)
-ggsave("cell_type_clusters.png", clusters, path= paste(results_path, "cell_annotation", sep = "/"))
+clusters <- DimPlot(seu_obj_integrated_filtered, reduction = 'umap', label = TRUE)
+ggsave("cell_type_clusters.png", clusters, path= results_path)
 
-respond_group <- DimPlot(melanoma_seu_obj_integrated, reduction = 'umap', group.by = 'response')
-ggsave("respond_group.png", respond_group, path= paste(results_path, "cell_annotation", sep = "/"))
+timepoint_cellann <- DimPlot(seu_obj_integrated_filtered, reduction = 'umap', group.by = 'Cell_ann', split.by = 'timepoint')
+#ggsave("timepoint_split_cellann.png", timepoint_cellann, path= results_path)
 
-experiment <- DimPlot(melanoma_seu_obj_integrated, reduction = 'umap', group.by = 'orig.ident')
-patient <- DimPlot(melanoma_seu_obj_integrated, reduction = 'umap', group.by = 'patient_id')
-
-timepoint <- DimPlot(melanoma_seu_obj_integrated, reduction = 'umap', group.by = 'timepoint')
-ggsave("timepoint.png", timepoint, path= paste(results_path, "cell_annotation", sep = "/"))
-
-patient_cell <- DimPlot(melanoma_seu_obj_integrated, reduction = 'umap', group.by = 'patient_id', split.by = 'Cell_ann')
-ggsave("patient_split_cellann.png", patient_cell, path= paste(results_path, "cell_annotation", sep = "/"))
-
-respond_group
-
-clusters
 ```
 
 Save the annotated seurat object
 
 ```{r}
-saveRDS(melanoma_seu_obj_integrated, paste(data_path, "seurat_data/melanoma_seu_obj_annotated.rds", sep = "/"))
+saveRDS(seu_obj_integrated_filtered, paste(data_path, "seurat_data/seu_obj_annotated.rds", sep = "/"))
 ```
 
 

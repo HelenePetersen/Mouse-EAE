@@ -1,0 +1,304 @@
+---
+title: "Differential Gene expression"
+format: html
+editor: visual
+---
+
+## Introduction
+
+## Preparation
+
+### Setup
+
+Relevant libraries are loaded.
+
+```{r, message = false}
+library(Seurat)
+library(tidyverse)
+library(stringr)
+library(ggplot2)
+library(patchwork)
+library(SingleCellExperiment)
+library(DESeq2)
+library(scater)
+library(table1)
+library(ggrepel)
+```
+
+Define the path to get the data and save results.
+
+```{r}
+# Helene
+data_path <- "o:/Public/T-Cell-Signalling-and-Development/VB Lab/10x_data/SpecialProject/10xRNA_M-EAE-gdT/Lymph/data"
+
+results_path <- "o:/Public/T-Cell-Signalling-and-Development/VB Lab/10x_data/SpecialProject/10xRNA_M-EAE-gdT/Lymph/results/dge"
+
+```
+### Defining project variables
+
+```{r}
+project <- "10xRNA_M-EAE-gdT"
+experiment_id <- list("LN0", "LN11", "LN21", "NEO")
+experiment_num <- length(experiment_id)
+```
+
+### Data Load
+
+The cell annotated data is loaded.
+
+```{r}
+seu_obj_annotated <- readRDS(paste(data_path,
+                                   "seu_obj_annotated.rds",
+                                   sep = "/"))
+
+seu_obj_annotated <- seu_obj_integrated_filtered
+seu_obj_annotated$cell_type <- seu_obj_annotated$Cell_ann
+```
+
+We take a look at the amount of cells for each subtype.
+
+```{r}
+label(seu_obj_annotated$cell_type) <- "Cell Type"
+table1(data = seu_obj_annotated@meta.data,
+       ~ cell_type | timepoint,
+       caption = "Experiment")
+```
+
+Type 1 and 3 γδT cells are almost equally abundant in all time points.
+
+## Differential Gene Expression (DEG)
+
+In the following, we wish to identify specific genes that are significant differential expressed between the timepoint LN0 and LN11 and between LN11 and NEO.
+
+### Aggregate counts
+
+The DEG analysis is a pseudobulk analysis. We aggregate the counts for all cells within each biological replicate and then using standard bulk RNA-seq methods for DGE. 
+
+We sum all the counts comming from the same replicate within each experiment. The counts are also summed for each cell type comming from the same patient.
+
+```{r}
+# Counts were we do not distinguish between cell types.
+counts_all <- AggregateExpression(seu_obj_annotated,
+                                  group.by = "id",
+                                  assays =  "RNA",
+                                  return.seurat = FALSE)
+
+# Counts aggregated for each cell type within each experiment for each replicate.
+counts_subset <- AggregateExpression(seu_obj_annotated,
+                                     group.by = c("cell_type", "id"),
+                                     assays =  "RNA",
+                                     return.seurat = FALSE)
+```
+
+The counts are extracted, and the matrix is converted to a data frame. The counts for the individual subtypes are transposed first.
+
+```{r}
+counts_all <- counts_all$RNA
+counts_all <- as.data.frame(counts_all)
+
+counts_subset <- counts_subset$RNA
+counts_subset <- t(counts_subset)
+counts_subset <- as.data.frame(counts_subset)
+```
+
+We split the data frame counts_subset using gsub, which replaces all occurrences of "\_" in the rownames containing information about cell type and time point. We end up with a list of data frames looking like counts_all for the aggregated counts for each cell type. For each data frame in the list, the rownames are fixed and the data frame is transposed.
+
+```{r}
+split_rows <- gsub("_.*", "", rownames(counts_subset))
+cts_split <- split.data.frame(counts_subset,
+                              f = factor(split_rows))
+cts_split_modified <- lapply(cts_split, function(x){
+  rownames(x) <- gsub('.*_(.*)', '\\1', rownames(x))
+  t(x)
+  })
+
+counts_subset <- cts_split_modified
+```
+
+### Subset conditions
+```{r}
+
+counts_LN0LN11 <- select(counts_all, c("LN0-1","LN0-2", "LN0-3", "LN11-1", "LN11-2", "LN11-3") )
+counts_NEOLN11 <- select(counts_all, c("NEO-1","NEO-2", "NEO-3", "LN11-1", "LN11-2", "LN11-3") )
+
+```
+
+
+### DeSeq 
+The following function runs DESeq2 analysis with counts as input, and colData describing the design.
+
+```{r}
+DeSeq2Analysis <- function(counts, colData){
+  
+  # DESeq2 object
+  dds <- DESeqDataSetFromMatrix(countData = counts,
+                                colData = colData,
+                                design = ~ condition)
+  
+  # Filter genes
+  keep <- rowSums(counts(dds)) >= 10
+  dds <- dds[keep,]
+  
+  # Run DESeq2
+  dds <- DESeq(dds)
+  
+  # Print coefficients for the comparison.
+  print(resultsNames(dds)[2])
+  
+  # Results
+  res <- results(dds, name = resultsNames(dds)[2])
+  res_tbl <- res %>%
+    data.frame() %>%
+    rownames_to_column(var = "gene") %>%
+    as_tibble() %>%
+    arrange(padj)
+  
+  # Significant results
+  padj_cutoff <- 0.05
+  sig_res <- dplyr::filter(res_tbl, padj < padj_cutoff & abs(log2FoldChange) > 1) %>%
+    dplyr::arrange(padj)
+  
+  res_list <- list(res_tbl, sig_res)
+  
+  return(res_list)
+}
+
+vulcanoPlot <- function(res, comparison){
+  ggplot(data = res[[1]],
+         mapping = aes(x = log2FoldChange,
+                       y = -log10(pvalue),
+                       label = gene)) + 
+  geom_point(alpha = 0.5) + 
+  geom_point(data = res[[2]],
+             mapping = aes(x = log2FoldChange,
+                           y = -log10(pvalue)),
+             color = "#CC3333",
+             alpha = 0.5) + 
+  geom_label_repel(data = res[[2]],
+                   color = "black") + 
+  theme_light() +
+  labs(title = paste("DGE", comparison))
+}
+```
+
+#### DGE LN0 LN11
+We wish to investigate if there is a difference in the gene expression between LN0 and LN11. We generate sample level metadata.
+
+```{r}
+colData <- data.frame(samples = colnames(counts_LN0LN11))
+colData <- colData %>%
+  mutate(condition = ifelse(grepl('LN0', samples), "LN0", "LN11")) %>%
+  column_to_rownames(var = 'samples')
+
+colData
+```
+
+We run the DESeq2 analysis.
+
+```{r, message = FALSE}
+res_all_LN0LN11 <- DeSeq2Analysis(counts_LN0LN11, colData)
+```
+
+We take a look at the significant results:
+
+```{r}
+
+volcano_LN0LN11 <- vulcanoPlot(res_all_LN0LN11, "LN0 vs LN11")
+
+ggsave("volcano_LN0_LN11.png", volcano_LN0LN11, path= results_path)
+```
+##### DGE subsets
+LN0 type 1 vs LN11 type 1
+
+```{r}
+counts_T1 <- as.data.frame(counts_subset$`T1`)
+counts_T1_LN0LN11 <- select(counts_T1, c("LN0-1","LN0-2", "LN0-3", "LN11-1", "LN11-2", "LN11-3") )
+
+res_T1 <- DeSeq2Analysis(counts_T1_LN0LN11, colData)
+type1_volcano <- vulcanoPlot(res_T1, "LN0 vs LN11 (Type 1)")
+ggsave("volcano_T1_LN0_LN11.png", type1_volcano, path= results_path)
+```
+
+LN0 type 1 vs LN11 type 3
+
+```{r}
+counts_T3 <- as.data.frame(counts_subset$`T3`)
+counts_T3_LN0LN11 <- select(counts_T3, c("LN0-1","LN0-2", "LN0-3", "LN11-1", "LN11-2", "LN11-3") )
+
+res_T3 <- DeSeq2Analysis(counts_T3_LN0LN11, colData)
+type3_volcano <- vulcanoPlot(res_T3, "LN0 vs LN11 (Type 3)")
+ggsave("volcano_T3_LN0_LN11.png", type3_volcano, path= results_path)
+```
+LN0 type 1 vs LN11 Prolife
+
+```{r}
+counts_PL <- as.data.frame(counts_subset$`Prolife`)
+counts_PL_LN0LN11 <- select(counts_PL, c("LN0-1","LN0-2", "LN0-3", "LN11-1", "LN11-2", "LN11-3") )
+
+res_PL <- DeSeq2Analysis(counts_PL_LN0LN11, colData)
+typePL_volcano <- vulcanoPlot(res_PL, "LN0 vs LN11 (Proliferating)")
+ggsave("volcano_PL_LN0_LN11.png", typePL_volcano, path= results_path)
+```
+
+
+#### DGE NEO LN11
+We wish to investigate if there is a difference in the gene expression between NEO and LN11. We generate sample level metadata.
+
+```{r}
+colData <- data.frame(samples = colnames(counts_NEOLN11))
+colData <- colData %>%
+  mutate(condition = ifelse(grepl('NEO', samples), "NEO", "LN11")) %>%
+  column_to_rownames(var = 'samples')
+
+colData
+```
+
+We run the DESeq2 analysis.
+
+```{r, message = FALSE}
+res_all_NEOLN11 <- DeSeq2Analysis(counts_NEOLN11, colData)
+```
+
+We take a look at the significant results:
+
+```{r}
+volcano_NEOLN11 <- vulcanoPlot(res_all_NEOLN11, "NEO vs LN11")
+
+ggsave("volcano_NEO_LN11.png", volcano_NEOLN11, path= results_path)
+```
+
+
+##### DGE subsets
+
+NEO type 1 vs LN11 type 1
+
+```{r}
+counts_T1_NEOLN11 <- select(counts_T1, c("NEO-1","NEO-2", "NEO-3", "LN11-1", "LN11-2", "LN11-3") )
+
+res_T1 <- DeSeq2Analysis(counts_T1_NEOLN11, colData)
+type1_volcano <- vulcanoPlot(res_T1, "NEO vs LN11 (Type 1)")
+ggsave("volcano_T1_NEO_LN11.png", type1_volcano, path= results_path)
+```
+
+NEO type 1 vs LN11 type 3
+
+```{r}
+counts_T3_NEOLN11 <- select(counts_T3, c("NEO-1","NEO-2", "NEO-3", "LN11-1", "LN11-2", "LN11-3") )
+
+res_T3 <- DeSeq2Analysis(counts_T3_NEOLN11, colData)
+type3_volcano <- vulcanoPlot(res_T3, "NEO vs LN11 (Type 3)")
+ggsave("volcano_T3_NEO_LN11.png", type3_volcano, path= results_path)
+```
+NEO type 1 vs LN11 Prolife
+
+```{r}
+counts_PL_NEOLN11 <- select(counts_PL, c("NEO-1","NEO-2", "NEO-3", "LN11-1", "LN11-2", "LN11-3") )
+
+res_PL <- DeSeq2Analysis(counts_PL_NEOLN11, colData)
+typePL_volcano <- vulcanoPlot(res_PL, "NEO vs LN11 (Proliferating)")
+ggsave("volcano_PL_NEO_LN11.png", typePL_volcano, path= results_path)
+```
+
+
+
+
