@@ -111,7 +111,7 @@ counts_subset <- cts_split_modified
 
 ### D11 vs. D0 (all cells)
 
-The following function runs DESeq2 analysis with counts as input, and colData describing the design.
+The following functions runs DESeq2 analysis with counts as input, and colData describing the design. The results can viewed using the vulcano plot function and saved using saveDESeq2Res.
 
 ```{r}
 DeSeq2Analysis <- function(counts, colData){
@@ -148,6 +148,41 @@ DeSeq2Analysis <- function(counts, colData){
   
   return(res_list)
 }
+
+vulcanoPlot <- function(res){
+  ggplot(data = res[[1]],
+         mapping = aes(x = log2FoldChange,
+                       y = -log10(pvalue),
+                       label = gene)) + 
+  geom_point(alpha = 0.5) + 
+  geom_point(data = res[[2]],
+             mapping = aes(x = log2FoldChange,
+                           y = -log10(pvalue)),
+             color = "#CC3333",
+             alpha = 0.5) + 
+  geom_label_repel(data = res[[2]],
+                   color = "black") + 
+  theme_light() + 
+  xlab("log2FC") +
+  ylab("-log10(p)")
+}
+
+saveDESeq2Res <- function(res, filename){
+  wb <- createWorkbook()
+  for (i in 1:length(res)){
+    addWorksheet(wb, sheetName = c("complete", "significant")[i])
+    writeData(wb,
+              sheet = i,
+              x = res[[i]],
+              rowNames = FALSE)
+    }
+  saveWorkbook(wb, paste(result_path,
+                         "/",
+                         filename,
+                         ".xlsx",
+                         sep = ""))
+}
+
 ```
 
 We wish to investigate if there is a difference in the gene expression between D0 and D11. We generate sample level metadata.
@@ -170,24 +205,10 @@ res_all <- DeSeq2Analysis(counts_all, colData)
 We take a look at the significant results:
 
 ```{r, warning = FALSE}
-vulcanoPlot <- function(res){
-  ggplot(data = res[[1]],
-         mapping = aes(x = log2FoldChange,
-                       y = -log10(pvalue),
-                       label = gene)) + 
-  geom_point(alpha = 0.5) + 
-  geom_point(data = res[[2]],
-             mapping = aes(x = log2FoldChange,
-                           y = -log10(pvalue)),
-             color = "#CC3333",
-             alpha = 0.5) + 
-  geom_label_repel(data = res[[2]],
-                   color = "black") + 
-  theme_light()
-}
-
-vulcanoPlot(res_all)
-
+vulcanoPlot(res_all) + 
+  labs(title = "D11 VS. D0 for all cells",
+        caption = "Red points indicate significant results.")
+  
 ggsave(filename = "vulcano_all.png",
        path = result_path,
        width = 10,
@@ -208,7 +229,14 @@ Let us take a look at the results.
 We take a look at the significant results:
 
 ```{r, warning = FALSE}
-vulcanoPlot(res_type1)
+vulcanoPlot(res_type1) +
+  labs(title = "D11 VS. D0 for type 1 cells",
+        caption = "Red points indicate significant results.")
+
+ggsave(filename = "vulcano_type1.png",
+       path = result_path,
+       width = 10,
+       height = 6)
 ```
 
 ### D11 vs. D0 (Type 3)
@@ -223,32 +251,20 @@ res_type3 <- DeSeq2Analysis(counts_type3, colData)
 We take a look at the results.
 
 ```{r, warning = FALSE}
-vulcanoPlot(res_type3)
+vulcanoPlot(res_type3) +
+  labs(title = "D11 VS. D0 for type 3 cells",
+        caption = "Red points indicate significant results.")
 
-
+ggsave(filename = "vulcano_type3.png",
+       path = result_path,
+       width = 10,
+       height = 6)
 ```
 
+Save all the results in excel files.
 
 ```{r}
-saveDESeqRes <- function(res, filename){
-  wb <- createWorkbook()
-  for (i in 1:length(res)){
-    addWorksheet(wb, sheetName = c("complete", "significant")[i])
-    writeData(wb,
-              sheet = i,
-              x = res[[i]],
-              rowNames = FALSE)
-    }
-  saveWorkbook(wb, paste(result_path,
-                         "/",
-                         filename,
-                         ".xlsx",
-                         sep = ""))
-}
-
 saveDESeqRes(res_all, "res_all")
 saveDESeqRes(res_type1, "res_type1")
 saveDESeqRes(res_type3, "res_type3")
 ```
-
-
