@@ -641,8 +641,7 @@ print(paste("Cells removed: ",
       sep = ""))
 ```
 
-Genes removed: 60 (0.3%)
-Cells removed: 1998 (4.77%)
+Genes removed: 60 (0.3%) Cells removed: 1998 (4.77%)
 
 ## Removal of HTO demux identified doublets
 
@@ -680,13 +679,15 @@ print(paste("Cells removed: ",
             "%)",
       sep = ""))
 ```
-Genes removed: 0 (0%)
-Cells removed: 4600 (11.54%)
+
+Genes removed: 0 (0%) Cells removed: 4600 (11.54%)
 
 ## Preprocessing
+
 The final preprocessing of the data are done according to the standard Seurat workflow.
 
 ### Normalization
+
 The counts are normalized by dividing the count for each gene pr. cell by the total counts for that cell and multiplied by a scale factor. This is then log transformed using the natural log.
 
 ```{r}
