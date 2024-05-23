@@ -23,6 +23,7 @@ library(DESeq2)
 library(scater)
 library(table1)
 library(ggrepel)
+library(openxlsx)
 ```
 
 Define the path to get the data and save results.
@@ -48,10 +49,9 @@ The cell annotated data is loaded.
 
 ```{r}
 seu_obj_annotated <- readRDS(paste(data_path,
-                                   "seu_obj_annotated.rds",
-                                   sep = "/"))
+                                   "/seurat_data/seu_obj_annotated.rds",
+                                   sep = ""))
 
-seu_obj_annotated <- seu_obj_integrated_filtered
 seu_obj_annotated$cell_type <- seu_obj_annotated$Cell_ann
 ```
 
@@ -239,7 +239,21 @@ res_PL <- DeSeq2Analysis(counts_PL_LN0LN11, colData)
 typePL_volcano <- vulcanoPlot(res_PL, "LN0 vs LN11 (Proliferating)")
 ggsave("volcano_PL_LN0_LN11.png", typePL_volcano, path= results_path)
 ```
+Save DEG LN11 vs LN0 in one excel file
+```{r}
+DEGs_LN11_LN0 <- list(res_all_LN0LN11[[2]], res_T1[[2]], res_T3[[2]], res_PL[[2]])
 
+wb <- createWorkbook()
+sheetnames <- c("res_LN11_LN0", "res_T1", "res_T3", "res_PL")
+
+for (i in 1:length(DEGs_LN11_LN0)) {
+  addWorksheet(wb, sheetName = sheetnames[i])
+  writeData(wb, sheet = i, x = DEGs_LN11_LN0[[i]])
+}
+
+saveWorkbook(wb, paste(results_path,"DEGs_LN11_LN0.xlsx", sep = "/"))
+
+```
 
 #### DGE NEO LN11
 We wish to investigate if there is a difference in the gene expression between NEO and LN11. We generate sample level metadata.
@@ -299,6 +313,153 @@ typePL_volcano <- vulcanoPlot(res_PL, "NEO vs LN11 (Proliferating)")
 ggsave("volcano_PL_NEO_LN11.png", typePL_volcano, path= results_path)
 ```
 
+Save DEG NEO vs LN11 in one excel file
+```{r}
+DEGs_NEO_LN11 <- list(res_all_NEOLN11[[2]], res_T1[[2]], res_T3[[2]], res_PL[[2]])
+
+wb <- createWorkbook()
+sheetnames <- c("res_NEO_LN11", "res_T1", "res_T3", "res_PL")
+
+for (i in 1:length(DEGs_NEO_LN11)) {
+  addWorksheet(wb, sheetName = sheetnames[i])
+  writeData(wb, sheet = i, x = DEGs_NEO_LN11[[i]])
+}
+
+saveWorkbook(wb, paste(results_path,"DEGs_NEO_LN11.xlsx", sep = "/"))
+
+```
+
+## Enrichment analysis
+
+```{r}
+#Add EntrezID for the genes
+library(org.Mm.eg.db)
+library(fgsea)
+library(AnnotationDbi)
+library(msigdbr)
+Entrez <- AnnotationDbi::select(org.Mm.eg.db,
+                                    key=res_all_LN0LN11[[2]]$gene, 
+                                    columns="ENTREZID",
+                                    keytype="SYMBOL")
+Entrez <- as_tibble(Entrez)
+
+#Ranking data
+res<- as.data.frame(res_all_LN0LN11[[2]])
+
+res <- inner_join(res, Entrez, by=c("gene"="SYMBOL"))
+
+#Create new metric
+res$stat_sig <- -log10(res$pvalue) * sign(res$log2FoldChange)
 
 
+#Remove those genes that do not have an entrezid
+res2 <- filter(res, !is.na(ENTREZID))
+
+rankData <- res2$stat_sig
+names(rankData) <- res2$gene
+head(rankData)
+```
+
+Create function to perform enrichment analysis for multiple pathways
+```{r}
+EnrichAnalysis <- function(RankedGenes, pathwayIn, pathwayName){
+  # Convert the data frame to a list format
+pathway <- split(pathwayIn$gene_symbol, pathwayIn$gs_name)
+
+fgseaRes <- fgsea(pathways=pathway, stats=RankedGenes)
+
+
+fgseaResTidy <- fgseaRes %>%
+  as_tibble() %>%
+  arrange(desc(NES))
+
+
+#Plot the top 10 upregulated/downregulated genes after stimulation
+
+# Sort the data frame based on NES in descending order to get top 10 pathways
+top_10 <- fgseaResTidy %>%
+  arrange(desc(NES)) %>%
+  head(10)
+
+# Sort the data frame based on NES in ascending order to get bottom 10 pathways
+bottom_10 <- fgseaResTidy %>%
+  arrange(NES) %>%
+  head(10)
+
+# Combine top 10 and bottom 10 pathways
+top_bottom_10 <- rbind(top_10, bottom_10)
+
+
+ggplot(top_bottom_10, aes(reorder(pathway, NES), NES)) +
+  geom_col(aes(fill=padj<0.05)) +
+  coord_flip() +
+  labs(x="Pathway", y="Normalized Enrichment Score",
+       title= paste("Top 10 and Bottom 10", pathwayName ,"pathways based on Absolute NES from GSEA")) + 
+  theme_minimal()
+  
+}
+```
+
+
+```{r}
+BP_pathway <- msigdbr(species = "Mus musculus", category = "C5", subcategory = "BP")
+BP_enrich <- EnrichAnalysis(rankData, BP_pathway, "Biological processes")
+```
+```{r}
+KEGG_pathway <- msigdbr(species = "Mus musculus", category = "C2", subcategory = "CP:KEGG")
+KEGG_enrich <- EnrichAnalysis(rankData, KEGG_pathway, "KEGG")
+```
+
+```{r}
+Reactome_pathway <- msigdbr(species = "Mus musculus", category = "C2", subcategory = "CP:REACTOME")
+Reactome_enrich <- EnrichAnalysis(rankData, Reactome_pathway, "REACTOME")
+```
+
+```{r}
+IMMUNESIGDB_pathway <- msigdbr(species = "Mus musculus", category = "C7", subcategory = "IMMUNESIGDB")
+IMMUNESIGDB_enrich <- EnrichAnalysis(rankData, IMMUNESIGDB_pathway, "IMMUNESIGDB")
+```
+
+### NEO vs LN11
+res_all_NEOLN11
+
+```{r}
+NEO_Entrez <- AnnotationDbi::select(org.Mm.eg.db,
+                                    key=res_all_NEOLN11[[2]]$gene, 
+                                    columns="ENTREZID",
+                                    keytype="SYMBOL")
+NEO_Entrez <- as_tibble(NEO_Entrez)
+
+#Ranking data
+NEO_res<- as.data.frame(res_all_NEOLN11[[2]])
+
+NEO_res <- inner_join(NEO_res, NEO_Entrez, by=c("gene"="SYMBOL"))
+
+#Create new metric
+NEO_res$stat_sig <- -log10(NEO_res$pvalue+runif(1, min = 1e-300, max = 1e-299)) * sign(NEO_res$log2FoldChange)
+
+
+#Remove those genes that do not have an entrezid
+NEO_res2 <- filter(NEO_res, !is.na(ENTREZID))
+
+NEO_rankData <- NEO_res2$stat_sig
+names(NEO_rankData) <- NEO_res2$gene
+head(NEO_rankData)
+```
+
+```{r}
+BP_enrich_NEO <- EnrichAnalysis(NEO_rankData, BP_pathway, "Biological processes")
+```
+
+```{r}
+KEGG_enrich_NEO <- EnrichAnalysis(NEO_rankData, KEGG_pathway, "KEGG")
+```
+
+```{r}
+Reactome_enrich_NEO <- EnrichAnalysis(NEO_rankData, Reactome_pathway, "REACTOME")
+```
+
+```{r}
+IMMUNESIGDB_enrich_NEO <- EnrichAnalysis(NEO_rankData, IMMUNESIGDB_pathway, "IMMUNESIGDB")
+```
 
